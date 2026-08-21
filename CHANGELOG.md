@@ -1,10 +1,8 @@
 # Changelog
 
-## Latest Release Notes has Moved
+Release Please maintains new TrogonEventStore .NET Client entries above the historical upstream record below.
 
-For the latest release notes, please visit: https://github.com/kurrent-io/KurrentDB-Client-Dotnet/releases
-
-This file only contains the EventStoreDB client prior to the 2025 Kurrent rebrand.
+Entries through 23.3.0 describe the upstream client before this derivative began. They are retained for provenance and compatibility context.
 
 ## [23.3.0] - 2024-07-24
 
