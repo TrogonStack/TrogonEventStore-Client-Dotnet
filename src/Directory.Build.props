@@ -4,24 +4,27 @@
     <PropertyGroup>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <RootNamespace>KurrentDB.Client</RootNamespace>
-        <PackageId>KurrentDB.Client</PackageId>
+        <AssemblyName>TrogonEventStore.Client</AssemblyName>
+        <PackageId>TrogonEventStore.Client</PackageId>
     </PropertyGroup>
 
     <PropertyGroup>
-        <PackageIcon>ouro.png</PackageIcon>
         <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
-        <PackageProjectUrl>https://kurrent.io</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageProjectUrl>https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet</PackageProjectUrl>
         <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-        <PackageReleaseNotes>https://kurrent.io/blog/</PackageReleaseNotes>
-        <PackageTags>KurrentDB Client gRPC</PackageTags>
-        <Authors>Kurrent, Inc</Authors>
-        <Copyright>Copyright 2012-$([System.DateTime]::Today.Year.ToString()) Kurrent, Inc</Copyright>
+        <PackageReleaseNotes>https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/releases</PackageReleaseNotes>
+        <PackageTags>trogoneventstore eventstore client grpc</PackageTags>
+        <Authors>Straw Hat, LLC</Authors>
+        <Copyright>Copyright 2011-2025 Kurrent, Inc; Copyright 2026 Straw Hat, LLC</Copyright>
         <MinVerTagPrefix>v</MinVerTagPrefix>
+        <RepositoryUrl>https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
     </PropertyGroup>
 
     <ItemGroup>
         <None Include="..\..\LICENSE.md" Pack="true" PackagePath="\" />
-        <None Include="..\..\ouro.png" Pack="true" PackagePath="\" />
+        <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     </ItemGroup>
 
     <ItemGroup>

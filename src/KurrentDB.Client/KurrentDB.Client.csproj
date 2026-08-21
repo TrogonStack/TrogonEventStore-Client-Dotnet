@@ -1,9 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<PackageId>KurrentDB.Client</PackageId>
-		<Description>The base GRPC client library for the Kurrent Platform. Get the open source or commercial versions of KurrentDB from https://kurrent.io/</Description>
-		<PackageId>KurrentDB.Client</PackageId>
+		<PackageId>TrogonEventStore.Client</PackageId>
+		<Description>The official .NET client for TrogonEventStore.</Description>
 		<IsPackable>true</IsPackable>
 	</PropertyGroup>
 

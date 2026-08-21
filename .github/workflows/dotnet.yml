@@ -3,17 +3,89 @@ name: Client
 on:
   pull_request:
   push:
-    branches:
-      - master
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  old:
-    name: ${{ matrix.runtime }}
-    uses: ./.github/workflows/test.yml
+  vulnerability-scan:
+    name: scan-vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install .NET SDKs
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+      - name: Scan dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet restore KurrentDB.Client.sln
+          dotnet list KurrentDB.Client.sln package \
+            --vulnerable \
+            --include-transitive \
+            --format json \
+            --output-version 1 > vulnerabilities.json
+          jq -e '[.projects[] | (.frameworks // [])[] | ((.topLevelPackages // []) + (.transitivePackages // []))[]] | length == 0' vulnerabilities.json
+
+  build:
+    name: build/${{ matrix.framework }}
+    runs-on: ubuntu-latest
+    env:
+      UNIT_TEST_FILTER: >-
+        FullyQualifiedName~KurrentDB.Client.Tests.KurrentDBClientOperationOptionsTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.ConnectionStringTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.FromStreamTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.ValueObjectTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.UuidTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.StreamStateTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.PositionTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.NodePreferenceComparerTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.NodeSelectorTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.StreamPositionTests.
     strategy:
       fail-fast: false
       matrix:
-        runtime: [ previous-lts, lts, ci ]
-    with:
-      runtime: ${{ matrix.runtime }}
-    secrets: inherit
+        framework: [net8.0, net9.0, net10.0]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install .NET SDKs
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+      - name: Restore
+        run: dotnet restore KurrentDB.Client.sln
+      - name: Build
+        run: >-
+          dotnet build test/KurrentDB.Client.Tests/KurrentDB.Client.Tests.csproj
+          --configuration Release
+          --framework ${{ matrix.framework }}
+          --no-restore
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          results_directory="${RUNNER_TEMP}/test-results/${{ matrix.framework }}"
+          mkdir -p "$results_directory"
+          dotnet test test/KurrentDB.Client.Tests/KurrentDB.Client.Tests.csproj \
+            --configuration Release \
+            --framework ${{ matrix.framework }} \
+            --no-build \
+            --filter "$UNIT_TEST_FILTER" \
+            --logger "trx;LogFileName=results.trx" \
+            --results-directory "$results_directory"
+          grep -Eq '<Counters total="[1-9][0-9]*"' "$results_directory/results.trx"
