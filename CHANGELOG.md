@@ -4,6 +4,13 @@ Release Please maintains new TrogonEventStore .NET Client entries above the hist
 
 Entries through 23.3.0 describe the upstream client before this derivative began. They are retained for provenance and compatibility context.
 
+## [0.1.0](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/compare/v0.0.1...v0.1.0) (2026-08-22)
+
+
+### Features
+
+* **release:** automate client versioning ([#2](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/issues/2)) ([a4497e0](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/commit/a4497e011d434fa34d00fef29631bf31d6cfb159))
+
 ## [23.3.0] - 2024-07-24
 
 ### Added
