@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "717997b7670596fcf931216624aa5ed2ba1d9dbe",
+  "group-pull-request-title-pattern": "chore${scope}: release${component} ${version}",
+  "signoff": "Straw Hat Team Bot <61149376+sht-bot@users.noreply.github.com>",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "TrogonEventStore.Client",
+      "component": "TrogonEventStore.Client",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "pull-request-title-pattern": "chore${scope}: release${component} ${version}",
+      "bump-minor-pre-major": false,
+      "bump-patch-for-minor-pre-major": false
+    }
+  }
+}

@@ -109,16 +109,3 @@ jobs:
           dotnet nuget push "${package_paths[0]}" \
             --api-key "$GITHUB_TOKEN" \
             --source "https://nuget.pkg.github.com/${REGISTRY_OWNER}/index.json"
-
-  release:
-    if: github.event_name == 'push'
-    needs: publish
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Create draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" --draft --title "Release $RELEASE_TAG" --generate-notes
