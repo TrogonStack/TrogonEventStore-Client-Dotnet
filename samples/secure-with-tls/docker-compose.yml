@@ -7,15 +7,13 @@ networks:
 services:
   
   eventstore:
-    image: docker.eventstore.com/eventstore-ce/eventstoredb-ce:latest
+    image: ghcr.io/trogonstack/trogoneventstore:ci
     container_name: eventstore
     environment:
-      - EVENTSTORE_MEM_DB=true
       - EVENTSTORE_HTTP_PORT=2113
       - EVENTSTORE_LOG_LEVEL=Information
       - EVENTSTORE_RUN_PROJECTIONS=None
       - EVENTSTORE_START_STANDARD_PROJECTIONS=true
-      - EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true
       
       # set certificates location
       - EVENTSTORE_CERTIFICATE_FILE=/etc/eventstore/certs/node/node.crt
@@ -31,6 +29,11 @@ services:
       - type: volume
         source: eventstore-volume-logs1
         target: /var/log/eventstore
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--user", "admin:changeit", "--cacert", "/etc/eventstore/certs/ca/ca.crt", "https://localhost:2113/-/readiness"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
     restart: unless-stopped
 
 volumes:

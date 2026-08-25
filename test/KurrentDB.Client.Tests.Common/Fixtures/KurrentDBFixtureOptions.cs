@@ -6,9 +6,6 @@ public record KurrentDBFixtureOptions(
 	KurrentDBClientSettings DBClientSettings,
 	IDictionary<string, string?> Environment
 ) {
-	public KurrentDBFixtureOptions RunInMemory(bool runInMemory = true) =>
-		this with { Environment = Environment.With(x => x["EVENTSTORE_MEM_DB"] = runInMemory.ToString()) };
-
 	public KurrentDBFixtureOptions WithoutDefaultCredentials() => this with { DBClientSettings = DBClientSettings.With(x => x.DefaultCredentials = null) };
 
 	public KurrentDBFixtureOptions RunProjections(bool runProjections = true) =>
