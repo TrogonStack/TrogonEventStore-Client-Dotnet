@@ -62,16 +62,26 @@ namespace KurrentDB.Client {
 		/// <summary>
 		/// A <see cref="KurrentDB.Client.StreamMessage"/> indicating that the subscription is live.
 		/// </summary>
-		public record CaughtUp : StreamMessage {
-			internal static readonly CaughtUp Instance = new();
-		}
+		/// <param name="Timestamp">The time at which the subscription caught up.</param>
+		/// <param name="StreamPosition">The stream checkpoint, when subscribing to a stream.</param>
+		/// <param name="Position">The transaction log checkpoint, when subscribing to all streams.</param>
+		public record CaughtUp(
+			DateTimeOffset Timestamp,
+			StreamPosition? StreamPosition,
+			Position? Position
+		) : StreamMessage;
 
 		/// <summary>
 		/// A <see cref="KurrentDB.Client.StreamMessage"/> indicating that the subscription has switched to catch up mode.
 		/// </summary>
-		public record FellBehind : StreamMessage {
-			internal static readonly FellBehind Instance = new();
-		}
+		/// <param name="Timestamp">The time at which the subscription fell behind.</param>
+		/// <param name="StreamPosition">The stream checkpoint, when subscribing to a stream.</param>
+		/// <param name="Position">The transaction log checkpoint, when subscribing to all streams.</param>
+		public record FellBehind(
+			DateTimeOffset Timestamp,
+			StreamPosition? StreamPosition,
+			Position? Position
+		) : StreamMessage;
 
 		/// <summary>
 		/// A <see cref="KurrentDB.Client.StreamMessage"/> that could not be identified, usually indicating a lower client compatibility level than the server supports.

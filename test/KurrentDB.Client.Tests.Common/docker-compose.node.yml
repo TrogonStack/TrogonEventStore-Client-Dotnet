@@ -7,10 +7,9 @@ networks:
 services:
   
   eventstore:
-    image: docker.eventstore.com/eventstore-ce/eventstoredb-ce:${ES_DOCKER_TAG}
+    image: ghcr.io/trogonstack/trogoneventstore:${ES_DOCKER_TAG:-ci}
     container_name: eventstore
     environment:
-      - EVENTSTORE_MEM_DB=true
       - EVENTSTORE_HTTP_PORT=2113
       - EVENTSTORE_LOG_LEVEL=Information
       - EVENTSTORE_RUN_PROJECTIONS=None

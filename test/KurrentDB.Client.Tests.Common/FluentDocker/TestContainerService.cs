@@ -45,7 +45,7 @@ public abstract class TestContainerService : TestService<IContainerService, Cont
 			1_000,
 			60,
 			service => {
-				var output = service.ExecuteCommand("curl -u admin:changeit --cacert /etc/eventstore/certs/ca/ca.crt https://localhost:2113/health/live");
+				var output = service.ExecuteCommand("curl --fail -u admin:changeit --cacert /etc/eventstore/certs/ca/ca.crt https://localhost:2113/-/readiness");
 				if (!output.Success)
 					throw new Exception(output.Error);
 

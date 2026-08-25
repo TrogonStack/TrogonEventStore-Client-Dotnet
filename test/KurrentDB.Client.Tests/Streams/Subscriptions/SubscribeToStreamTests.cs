@@ -5,6 +5,35 @@ namespace KurrentDB.Client.Tests.Streams;
 public class SubscribeToStreamTests(ITestOutputHelper output, SubscribeToStreamTests.CustomFixture fixture)
 	: KurrentDBPermanentTests<SubscribeToStreamTests.CustomFixture>(output, fixture) {
 	[RetryFact]
+	public async Task exposes_caught_up_context() {
+		var streamName = Fixture.GetStreamName();
+		var startedAt  = DateTimeOffset.UtcNow;
+
+		await Fixture.Streams.AppendToStreamAsync(streamName, StreamState.NoStream, Fixture.CreateTestEvents());
+
+		await using var subscription = Fixture.Streams.SubscribeToStream(streamName, FromStream.Start);
+		await using var enumerator   = subscription.Messages.GetAsyncEnumerator();
+
+		await ReadCaughtUp().WithTimeout();
+
+		return;
+
+		async Task ReadCaughtUp() {
+			while (await enumerator.MoveNextAsync()) {
+				if (enumerator.Current is not StreamMessage.CaughtUp caughtUp)
+					continue;
+
+				Assert.InRange(caughtUp.Timestamp, startedAt, DateTimeOffset.UtcNow);
+				Assert.Equal(new StreamPosition(0), caughtUp.StreamPosition);
+				Assert.Null(caughtUp.Position);
+				return;
+			}
+
+			Assert.Fail("The subscription completed without reporting that it caught up.");
+		}
+	}
+
+	[RetryFact]
 	public async Task receives_all_events_from_start() {
 		var streamName = Fixture.GetStreamName();
 

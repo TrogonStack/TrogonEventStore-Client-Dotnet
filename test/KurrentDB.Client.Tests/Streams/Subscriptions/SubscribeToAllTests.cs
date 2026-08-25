@@ -8,6 +8,37 @@ namespace KurrentDB.Client.Tests;
 public class SubscribeToAllTests(ITestOutputHelper output, SubscribeToAllTests.CustomFixture fixture)
 	: KurrentTemporaryTests<SubscribeToAllTests.CustomFixture>(output, fixture) {
 	[Fact]
+	public async Task exposes_caught_up_context() {
+		var startedAt = DateTimeOffset.UtcNow;
+		var writeResult = await Fixture.Streams.AppendToStreamAsync(
+			Fixture.GetStreamName(),
+			StreamState.NoStream,
+			Fixture.CreateTestEvents()
+		);
+
+		await using var subscription = Fixture.Streams.SubscribeToAll(FromAll.Start);
+		await using var enumerator   = subscription.Messages.GetAsyncEnumerator();
+
+		await ReadCaughtUp().WithTimeout();
+
+		return;
+
+		async Task ReadCaughtUp() {
+			while (await enumerator.MoveNextAsync()) {
+				if (enumerator.Current is not StreamMessage.CaughtUp caughtUp)
+					continue;
+
+				Assert.InRange(caughtUp.Timestamp, startedAt, DateTimeOffset.UtcNow);
+				Assert.True(Assert.IsType<Position>(caughtUp.Position) >= writeResult.LogPosition);
+				Assert.Null(caughtUp.StreamPosition);
+				return;
+			}
+
+			Assert.Fail("The subscription completed without reporting that it caught up.");
+		}
+	}
+
+	[Fact]
 	public async Task receives_all_events_from_start() {
 		var seedEvents = Fixture.CreateTestEvents(10).ToArray();
 		var pageSize   = seedEvents.Length / 2;

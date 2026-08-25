@@ -5,7 +5,8 @@ on:
     inputs:
       server_image:
         description: Fully qualified TrogonEventStore container image
-        required: true
+        required: false
+        default: ghcr.io/trogonstack/trogoneventstore:ci
         type: string
       registry:
         description: Registry host for a private image; requires REGISTRY_USERNAME and REGISTRY_TOKEN secrets

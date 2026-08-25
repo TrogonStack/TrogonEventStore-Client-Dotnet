@@ -223,8 +223,24 @@ namespace KurrentDB.Client {
                                             response.Checkpoint.PreparePosition
                                         )
                                     ),
-                                    CaughtUp   => StreamMessage.CaughtUp.Instance,
-                                    FellBehind => StreamMessage.FellBehind.Instance,
+									CaughtUp => new StreamMessage.CaughtUp(
+										response.CaughtUp.Timestamp.ToDateTimeOffset(),
+										response.CaughtUp.HasStreamRevision
+											? StreamPosition.FromInt64(response.CaughtUp.StreamRevision)
+											: null,
+										response.CaughtUp.Position is { } position
+											? new Position(position.CommitPosition, position.PreparePosition)
+											: null
+									),
+									FellBehind => new StreamMessage.FellBehind(
+										response.FellBehind.Timestamp.ToDateTimeOffset(),
+										response.FellBehind.HasStreamRevision
+											? StreamPosition.FromInt64(response.FellBehind.StreamRevision)
+											: null,
+										response.FellBehind.Position is { } position
+											? new Position(position.CommitPosition, position.PreparePosition)
+											: null
+									),
                                     _          => StreamMessage.Unknown.Instance
                                 };
 
