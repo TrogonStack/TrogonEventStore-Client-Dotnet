@@ -29,16 +29,18 @@ public class SubscribeToAllTests(ITestOutputHelper output, KurrentDBPermanentFix
 
 		await Fixture.Subscriptions.CreateToAllAsync(group, new(maxSubscriberCount: 1), userCredentials: TestCredentials.Root);
 
-		var ex = await Assert.ThrowsAsync<MaximumSubscribersReachedException>(() => Task.WhenAll(Subscribe().WithTimeout(), Subscribe().WithTimeout()));
+		await using var firstSubscription = Fixture.Subscriptions.SubscribeToAll(group, userCredentials: TestCredentials.Root);
+		await using var firstEnumerator = firstSubscription.Messages.GetAsyncEnumerator();
+		Assert.True(await firstEnumerator.MoveNextAsync().AsTask().WithTimeout());
+		Assert.IsType<PersistentSubscriptionMessage.SubscriptionConfirmation>(firstEnumerator.Current);
+
+		await using var rejectedSubscription = Fixture.Subscriptions.SubscribeToAll(group, userCredentials: TestCredentials.Root);
+		await using var rejectedEnumerator = rejectedSubscription.Messages.GetAsyncEnumerator();
+		var ex = await Assert.ThrowsAsync<MaximumSubscribersReachedException>(async () =>
+			await rejectedEnumerator.MoveNextAsync().AsTask().WithTimeout());
 
 		Assert.Equal(SystemStreams.AllStream, ex.StreamName);
 		Assert.Equal(group, ex.GroupName);
-		return;
-
-		async Task Subscribe() {
-			await using var subscription = Fixture.Subscriptions.SubscribeToAll(group, userCredentials: TestCredentials.Root);
-			await subscription.Messages.AnyAsync();
-		}
 	}
 
 	[RetryFact]
@@ -108,7 +110,7 @@ public class SubscribeToAllTests(ITestOutputHelper output, KurrentDBPermanentFix
 
 		var resolvedEvent = await subscription!.Messages.OfType<PersistentSubscriptionMessage.Event>()
 			.Select(e => e.ResolvedEvent)
-			.Where(resolvedEvent => !SystemStreams.IsSystemStream(resolvedEvent.OriginalStreamId))
+			.Where(resolvedEvent => resolvedEvent.OriginalEvent.EventId == expectedEvent.EventId)
 			.FirstOrDefaultAsync().AsTask().WithTimeout();
 
 		Assert.Equal(expectedEvent.EventId, resolvedEvent.Event.EventId);
@@ -138,7 +140,7 @@ public class SubscribeToAllTests(ITestOutputHelper output, KurrentDBPermanentFix
 		var resolvedEvent = await subscription!.Messages
 			.OfType<PersistentSubscriptionMessage.Event>()
 			.Select(e => e.ResolvedEvent)
-			.Where(resolvedEvent => !SystemStreams.IsSystemStream(resolvedEvent.OriginalStreamId))
+			.Where(resolvedEvent => resolvedEvent.OriginalEvent.EventId == expectedEvent.EventId)
 			.FirstAsync()
 			.AsTask()
 			.WithTimeout();
@@ -829,20 +831,12 @@ public class SubscribeToAllTests(ITestOutputHelper output, KurrentDBPermanentFix
 	[RetryFact]
 	public async Task create_with_commit_position_larger_than_last_indexed_position() {
 		var group = Fixture.GetGroupName();
-
-		var lastEvent = await Fixture.Streams.ReadAllAsync(
-			Direction.Backwards,
-			Position.End,
-			1,
-			userCredentials: TestCredentials.Root
-		).FirstAsync();
-
-		var lastCommitPosition = lastEvent.OriginalPosition?.CommitPosition ?? throw new();
+		var futurePosition = new Position((ulong)long.MaxValue, (ulong)long.MaxValue);
 		var ex = await Assert.ThrowsAsync<RpcException>(
 			() =>
 				Fixture.Subscriptions.CreateToAllAsync(
 					group,
-					new(startFrom: new Position(lastCommitPosition + 1, lastCommitPosition)),
+					new(startFrom: futurePosition),
 					userCredentials: TestCredentials.Root
 				)
 		);

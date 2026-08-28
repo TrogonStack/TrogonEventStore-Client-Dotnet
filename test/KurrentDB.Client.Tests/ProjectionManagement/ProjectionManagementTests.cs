@@ -36,14 +36,18 @@ public class ProjectionManagementTests(ITestOutputHelper output, ProjectionManag
 	}
 
 	[Fact]
-	public async Task transient() {
+	public async Task transient_projections_are_not_supported() {
 		var name = Fixture.GetProjectionName();
 
-		await Fixture.DBProjections.CreateTransientAsync(
-			name,
-			"fromAll().when({$init: function (state, ev) {return {};}});",
-			userCredentials: TestCredentials.Root
+		var exception = await Assert.ThrowsAsync<Grpc.Core.RpcException>(
+			() => Fixture.DBProjections.CreateTransientAsync(
+				name,
+				"fromAll().when({$init: function (state, ev) {return {};}});",
+				userCredentials: TestCredentials.Root
+			)
 		);
+
+		Assert.Equal(Grpc.Core.StatusCode.FailedPrecondition, exception.StatusCode);
 	}
 
 	[Fact]

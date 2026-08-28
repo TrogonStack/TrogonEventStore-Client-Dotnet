@@ -163,11 +163,7 @@ namespace KurrentDB.Client {
 							}
                         }
                         finally {
-#if NET8_0_OR_GREATER
                             await _cts.CancelAsync().ConfigureAwait(false);
-#else
-                            _cts.Cancel();
-#endif
                         }
                     }
 				}
@@ -305,12 +301,8 @@ namespace KurrentDB.Client {
 						yield return e.ResolvedEvent;
 					}
 				}
-                finally {
-#if NET8_0_OR_GREATER
+				finally {
                     await _cts.CancelAsync().ConfigureAwait(false);
-#else
-                    _cts.Cancel();
-#endif
 				}
 			}
 		}

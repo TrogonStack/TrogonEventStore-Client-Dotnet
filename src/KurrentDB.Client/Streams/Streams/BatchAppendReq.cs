@@ -6,17 +6,15 @@ namespace KurrentDB.Protocol.Streams.V1 {
 	partial class BatchAppendReq {
 		partial class Types {
 			partial class Options {
+				static readonly DateTime InfiniteDeadline = DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
+
 				public static Options Create(StreamIdentifier streamIdentifier, StreamState expectedState,
 					TimeSpan? timeoutAfter) {
 					if (expectedState.HasPosition) {
 						return new() {
 							StreamIdentifier = streamIdentifier,
 							StreamPosition   = (ulong)expectedState.ToInt64(),
-							Deadline21100 = Timestamp.FromDateTime(
-								timeoutAfter.HasValue
-									? DateTime.UtcNow + timeoutAfter.Value
-									: DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)
-							)
+							Deadline21100 = Timestamp.FromDateTime(KurrentDBCallOptions.DeadlineAfter(timeoutAfter) ?? InfiniteDeadline)
 						};
 					}
 
@@ -30,11 +28,7 @@ namespace KurrentDB.Protocol.Streams.V1 {
 							_ => ExpectedStreamPositionOneofCase.StreamPosition
 						},
 						expectedStreamPosition_ = new Google.Protobuf.WellKnownTypes.Empty(),
-						Deadline21100 = Timestamp.FromDateTime(
-							timeoutAfter.HasValue
-								? DateTime.UtcNow + timeoutAfter.Value
-								: DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)
-						)
+						Deadline21100 = Timestamp.FromDateTime(KurrentDBCallOptions.DeadlineAfter(timeoutAfter) ?? InfiniteDeadline)
 					};
 				}
 			}

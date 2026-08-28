@@ -38,16 +38,18 @@ public class SubscribeToStreamTests(ITestOutputHelper output, KurrentDBPermanent
 			userCredentials: TestCredentials.Root
 		);
 
-		var ex = await Assert.ThrowsAsync<MaximumSubscribersReachedException>(() => Task.WhenAll(Subscribe().WithTimeout(), Subscribe().WithTimeout()));
+		await using var firstSubscription = Fixture.Subscriptions.SubscribeToStream(stream, group, userCredentials: TestCredentials.Root);
+		await using var firstEnumerator = firstSubscription.Messages.GetAsyncEnumerator();
+		Assert.True(await firstEnumerator.MoveNextAsync().AsTask().WithTimeout());
+		Assert.IsType<PersistentSubscriptionMessage.SubscriptionConfirmation>(firstEnumerator.Current);
+
+		await using var rejectedSubscription = Fixture.Subscriptions.SubscribeToStream(stream, group, userCredentials: TestCredentials.Root);
+		await using var rejectedEnumerator = rejectedSubscription.Messages.GetAsyncEnumerator();
+		var ex = await Assert.ThrowsAsync<MaximumSubscribersReachedException>(async () =>
+			await rejectedEnumerator.MoveNextAsync().AsTask().WithTimeout());
 
 		Assert.Equal(stream, ex.StreamName);
 		Assert.Equal(group, ex.GroupName);
-		return;
-
-		async Task Subscribe() {
-			await using var subscription = Fixture.Subscriptions.SubscribeToStream(stream, group, userCredentials: TestCredentials.Root);
-			await subscription.Messages.AnyAsync();
-		}
 	}
 
 	[RetryFact]

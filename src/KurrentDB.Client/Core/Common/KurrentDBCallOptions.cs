@@ -65,10 +65,12 @@ static class KurrentDBCallOptions {
 				)
 		);
 
-	static DateTime? DeadlineAfter(TimeSpan? timeoutAfter) =>
+	internal static DateTime? DeadlineAfter(TimeSpan? timeoutAfter) =>
 		!timeoutAfter.HasValue
 			? new DateTime?()
 			: timeoutAfter.Value == TimeSpan.MaxValue || timeoutAfter.Value == InfiniteTimeSpan
-				? DateTime.MaxValue
-				: DateTime.UtcNow.Add(timeoutAfter.Value);
+				? DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)
+				: timeoutAfter.Value <= TimeSpan.Zero
+					? DateTime.UtcNow.AddSeconds(-1)
+					: DateTime.UtcNow.Add(timeoutAfter.Value);
 }

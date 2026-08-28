@@ -46,6 +46,7 @@ public class DiagnosticsFixture : KurrentDBPermanentFixture {
 	}
 
 	public ActivityTraceId CreateTraceId() {
+		Activity.Current = null;
 		var activity = new Activity(Guid.NewGuid().ToString("N"));
 		activity.Start();
 		Activity.Current = activity;
@@ -54,6 +55,11 @@ public class DiagnosticsFixture : KurrentDBPermanentFixture {
 
 	public List<Activity> GetActivities(string operation, ActivityTraceId traceId) =>
 		Activities.TryGetValue((operation, traceId), out var activities) ? activities : [];
+
+	public List<Activity> GetActivities(string operation, ActivityTraceId traceId, string stream) =>
+		GetActivities(operation, traceId)
+			.Where(activity => Equals(activity.GetTagItem(TelemetryTags.KurrentDB.Stream), stream))
+			.ToList();
 
 	public void AssertMultiAppendActivityHasExpectedTags(Activity activity) {
 		var expectedTags = new Dictionary<string, string?> {

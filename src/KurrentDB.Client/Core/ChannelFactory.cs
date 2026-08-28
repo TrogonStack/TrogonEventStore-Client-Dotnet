@@ -20,14 +20,10 @@ namespace KurrentDB.Client {
 			return TChannel.ForAddress(
 				address,
 				new GrpcChannelOptions {
-#if NET48
-					HttpHandler = CreateHandler(settings),
-#else
 					HttpClient = new HttpClient(CreateHandler(settings), true) {
 						Timeout               = System.Threading.Timeout.InfiniteTimeSpan,
 						DefaultRequestVersion = new Version(2, 0)
 					},
-#endif
 					LoggerFactory         = settings.LoggerFactory,
 					Credentials           = settings.ChannelCredentials,
 					DisposeHttpClient     = true,
@@ -35,38 +31,6 @@ namespace KurrentDB.Client {
 				}
 			);
 
-
-#if NET48
-		static HttpMessageHandler CreateHandler(KurrentDBClientSettings settings) {
-			if (settings.CreateHttpMessageHandler is not null)
-				return settings.CreateHttpMessageHandler.Invoke();
-
-			var handler = new WinHttpHandler {
-				TcpKeepAliveEnabled = true,
-				TcpKeepAliveTime = settings.ConnectivitySettings.KeepAliveTimeout,
-				TcpKeepAliveInterval = settings.ConnectivitySettings.KeepAliveInterval,
-				EnableMultipleHttp2Connections = true
-			};
-
-			if (settings.ConnectivitySettings.Insecure) return handler;
-
-			if (settings.ConnectivitySettings.ClientCertificate is not null)
-				handler.ClientCertificates.Add(settings.ConnectivitySettings.ClientCertificate);
-
-			handler.ServerCertificateValidationCallback = settings.ConnectivitySettings.TlsVerifyCert switch {
-				false => delegate { return true; },
-				true when settings.ConnectivitySettings.TlsCaFile is not null => (sender, certificate, chain, errors) => {
-					if (chain is null) return false;
-
-					chain.ChainPolicy.ExtraStore.Add(settings.ConnectivitySettings.TlsCaFile);
-					return chain.Build(certificate);
-				},
-				_ => null
-			};
-
-			return handler;
-		}
-#else
 		static HttpMessageHandler CreateHandler(KurrentDBClientSettings settings) {
 			if (settings.CreateHttpMessageHandler is not null)
 				return settings.CreateHttpMessageHandler.Invoke();
@@ -100,7 +64,6 @@ namespace KurrentDB.Client {
 
 			return handler;
 		}
-#endif
 		}
 	}
 }
