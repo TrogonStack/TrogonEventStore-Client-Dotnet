@@ -7,6 +7,8 @@ namespace KurrentDB.Client.Tests;
 [Trait("Category", "Target:Streams")]
 public class SubscribeToAllTests(ITestOutputHelper output, SubscribeToAllTests.CustomFixture fixture)
 	: KurrentTemporaryTests<SubscribeToAllTests.CustomFixture>(output, fixture) {
+	static readonly TimeSpan ClockSkewTolerance = TimeSpan.FromSeconds(1);
+
 	[Fact]
 	public async Task exposes_caught_up_context() {
 		var startedAt = DateTimeOffset.UtcNow;
@@ -28,7 +30,11 @@ public class SubscribeToAllTests(ITestOutputHelper output, SubscribeToAllTests.C
 				if (enumerator.Current is not StreamMessage.CaughtUp caughtUp)
 					continue;
 
-				Assert.InRange(caughtUp.Timestamp, startedAt, DateTimeOffset.UtcNow);
+				Assert.InRange(
+					caughtUp.Timestamp,
+					startedAt - ClockSkewTolerance,
+					DateTimeOffset.UtcNow + ClockSkewTolerance
+				);
 				Assert.True(Assert.IsType<Position>(caughtUp.Position) >= writeResult.LogPosition);
 				Assert.Null(caughtUp.StreamPosition);
 				return;

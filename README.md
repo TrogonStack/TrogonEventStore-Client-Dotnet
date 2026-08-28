@@ -1,6 +1,6 @@
 # TrogonEventStore .NET Client
 
-The .NET client for TrogonEventStore. The package targets .NET Framework 4.8 and .NET 8, 9, and 10.
+The .NET client for TrogonEventStore. The package targets .NET 10.
 
 This project is derived from the Apache 2.0 licensed KurrentDB .NET client. See [LICENSE.md](LICENSE.md) for licensing and attribution. During the initial bootstrap, the public API remains under the `KurrentDB.Client` namespaces while package identity and distribution move to TrogonEventStore.
 
@@ -32,7 +32,7 @@ Do not put the token directly in this file or commit a credentials-bearing NuGet
 
 ## Build
 
-The repository builds all supported target frameworks with the .NET 10 SDK:
+The repository builds the .NET 10 target with the .NET 10 SDK:
 
 ```console
 dotnet build

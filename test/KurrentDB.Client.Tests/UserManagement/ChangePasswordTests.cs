@@ -38,7 +38,7 @@ public class ChangePasswordTests(ITestOutputHelper output, KurrentDBPermanentFix
 		var user = await Fixture.CreateTestUser();
 
 		await Fixture.DBUsers
-			.ChangePasswordAsync(user.LoginName, "wrong-password", "new-password", userCredentials: TestCredentials.Root)
+			.ChangePasswordAsync(user.LoginName, "wrong-password", "new-password", userCredentials: user.Credentials)
 			.ShouldThrowAsync<AccessDeniedException>();
 	}
 
@@ -47,7 +47,7 @@ public class ChangePasswordTests(ITestOutputHelper output, KurrentDBPermanentFix
 		var user = await Fixture.CreateTestUser();
 
 		await Fixture.DBUsers
-			.ChangePasswordAsync(user.LoginName, user.Password, "new-password", userCredentials: TestCredentials.Root)
+			.ChangePasswordAsync(user.LoginName, user.Password, "new-password", userCredentials: user.Credentials)
 			.ShouldNotThrowAsync();
 	}
 

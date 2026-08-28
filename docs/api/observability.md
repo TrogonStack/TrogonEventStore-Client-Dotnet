@@ -16,9 +16,6 @@ You'll need to install exporters for your chosen observability platform:
 # For console output
 dotnet add package OpenTelemetry.Exporter.Console
 
-# For Jaeger
-dotnet add package OpenTelemetry.Exporter.Jaeger
-
 # For OTLP (OpenTelemetry Protocol)
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 
@@ -74,10 +71,6 @@ var host = Host.CreateDefaultBuilder()
             .WithTracing(tracerBuilder => tracerBuilder
                 .AddKurrentDBClientInstrumentation()
                 .AddConsoleExporter()
-                .AddJaegerExporter(options =>
-                {
-                    options.Endpoint = new Uri("http://localhost:14268/api/traces");
-                })
                 .AddOtlpExporter(options =>
                 {
                     options.Endpoint = new Uri("http://localhost:4318/v1/traces");

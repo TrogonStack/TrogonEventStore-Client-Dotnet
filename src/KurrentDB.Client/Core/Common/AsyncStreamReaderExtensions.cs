@@ -15,15 +15,7 @@ static class AsyncStreamReaderExtensions {
 	}
 
 	public static async IAsyncEnumerable<T> ReadAllAsync<T>(this ChannelReader<T> reader, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
-#if NET
 		await foreach (var item in reader.ReadAllAsync(cancellationToken))
 			yield return item;
-#else
-		while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false)) {
-			while (reader.TryRead(out T? item)) {
-				yield return item;
-			}
-		}
-#endif
 	}
 }

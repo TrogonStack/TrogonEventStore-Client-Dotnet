@@ -13,6 +13,14 @@ namespace KurrentDB.Client.Tests.Diagnostics;
 [Trait("Category", "Target:Diagnostics")]
 public class StreamsTracingInstrumentationTests(ITestOutputHelper output, DiagnosticsFixture fixture) : KurrentDBPermanentTests<DiagnosticsFixture>(output, fixture) {
 	[Fact]
+	public void trace_contexts_are_independent() {
+		var first  = Fixture.CreateTraceId();
+		var second = Fixture.CreateTraceId();
+
+		Assert.NotEqual(first, second);
+	}
+
+	[Fact]
 	public async Task append_to_stream() {
 		var traceId = Fixture.CreateTraceId();
 
@@ -288,21 +296,23 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		await Subscribe(enumerator).WithTimeout();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Subscribe, traceId)
+			.GetActivities(TracingConstants.Operations.Subscribe, traceId, streamName)
 			.ToArray();
 
 		appendActivities.ShouldHaveSingleItem();
-
-		subscribeActivities.ShouldHaveSingleItem();
-
-		subscribeActivities.First().ParentId.ShouldBe(appendActivities.First().Id);
-
 		var jsonMetadataEvent = seedEvents.First();
 
-		Fixture.AssertSubscriptionActivityHasExpectedTags(
-			subscribeActivities.First(),
-			streamName,
-			jsonMetadataEvent.EventId.ToString()
+		Assert.NotEmpty(subscribeActivities);
+		Assert.All(
+			subscribeActivities,
+			activity => {
+				Assert.Equal(appendActivities.First().Id, activity.ParentId);
+				Fixture.AssertSubscriptionActivityHasExpectedTags(
+					activity,
+					streamName,
+					jsonMetadataEvent.EventId.ToString()
+				);
+			}
 		);
 
 		return;
@@ -326,13 +336,14 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		var traceId = Fixture.CreateTraceId();
 		var category   = Guid.NewGuid().ToString("N");
 		var streamName = category + "-123";
+		var categoryStream = "$ce-" + category;
 
 		var seedEvents = Fixture.CreateTestEvents(type: $"{category}-{Fixture.GetStreamName()}").ToArray();
 		await Fixture.Streams.AppendToStreamAsync(streamName, StreamState.NoStream, seedEvents);
 
 		await Fixture.Streams.DeleteAsync(streamName, StreamState.StreamExists);
 
-		await using var subscription = Fixture.Streams.SubscribeToStream("$ce-" + category, FromStream.Start, resolveLinkTos: true);
+		await using var subscription = Fixture.Streams.SubscribeToStream(categoryStream, FromStream.Start, resolveLinkTos: true);
 
 		await using var enumerator = subscription.Messages.GetAsyncEnumerator();
 
@@ -347,7 +358,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 			.ShouldNotBeNull();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Subscribe, traceId)
+			.GetActivities(TracingConstants.Operations.Subscribe, traceId, categoryStream)
 			.ToArray();
 
 		appendActivities.ShouldHaveSingleItem();

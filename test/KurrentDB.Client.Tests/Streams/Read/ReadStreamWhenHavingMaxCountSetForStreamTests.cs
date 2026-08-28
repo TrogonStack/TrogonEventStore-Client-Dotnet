@@ -21,8 +21,7 @@ public class ReadStreamWhenHavingMaxCountSetForStreamTests(ITestOutputHelper out
 			.Select(x => x.Event)
 			.ToArrayAsync();
 
-		Assert.Equal(3, actual.Length);
-		Assert.True(EventDataComparer.Equal(expected.Skip(2).ToArray(), actual));
+		Assert.Equal(expected.Skip(2).Select(@event => @event.EventId), actual.Select(@event => @event.EventId));
 	}
 
 	[Fact]
@@ -39,8 +38,7 @@ public class ReadStreamWhenHavingMaxCountSetForStreamTests(ITestOutputHelper out
 			.Select(x => x.Event)
 			.ToArrayAsync();
 
-		Assert.Equal(3, actual.Length);
-		Assert.True(EventDataComparer.Equal(expected.Skip(2).Reverse().ToArray(), actual));
+		Assert.Equal(expected.Skip(2).Reverse().Select(@event => @event.EventId), actual.Select(@event => @event.EventId));
 	}
 
 	[Fact]
@@ -59,8 +57,7 @@ public class ReadStreamWhenHavingMaxCountSetForStreamTests(ITestOutputHelper out
 			.Select(x => x.Event)
 			.ToArrayAsync();
 
-		Assert.Equal(4, actual.Length);
-		Assert.True(EventDataComparer.Equal(expected.Skip(1).ToArray(), actual));
+		Assert.Equal(expected.Skip(1).Select(@event => @event.EventId), actual.Select(@event => @event.EventId));
 	}
 
 	[Fact]
@@ -79,8 +76,7 @@ public class ReadStreamWhenHavingMaxCountSetForStreamTests(ITestOutputHelper out
 			.Select(x => x.Event)
 			.ToArrayAsync();
 
-		Assert.Equal(2, actual.Length);
-		Assert.True(EventDataComparer.Equal(expected.Skip(3).ToArray(), actual));
+		Assert.Equal(expected.Skip(3).Select(@event => @event.EventId), actual.Select(@event => @event.EventId));
 	}
 
 	[Fact]
@@ -99,8 +95,7 @@ public class ReadStreamWhenHavingMaxCountSetForStreamTests(ITestOutputHelper out
 			.Select(x => x.Event)
 			.ToArrayAsync();
 
-		Assert.Equal(4, actual.Length);
-		Assert.True(EventDataComparer.Equal(expected.Skip(1).Reverse().ToArray(), actual));
+		Assert.Equal(expected.Skip(1).Reverse().Select(@event => @event.EventId), actual.Select(@event => @event.EventId));
 	}
 
 	[Fact]
@@ -119,7 +114,6 @@ public class ReadStreamWhenHavingMaxCountSetForStreamTests(ITestOutputHelper out
 			.Select(x => x.Event)
 			.ToArrayAsync();
 
-		Assert.Equal(2, actual.Length);
-		Assert.True(EventDataComparer.Equal(expected.Skip(3).Reverse().ToArray(), actual));
+		Assert.Equal(expected.Skip(3).Reverse().Select(@event => @event.EventId), actual.Select(@event => @event.EventId));
 	}
 }

@@ -30,13 +30,8 @@ namespace KurrentDB.Client {
 						if (certificate is null || chain is null) return false;
 
 						chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-
-#if NET48
-						chain.ChainPolicy.ExtraStore.Add(settings.ConnectivitySettings.TlsCaFile);
-#else
 						chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
 						chain.ChainPolicy.CustomTrustStore.Add(settings.ConnectivitySettings.TlsCaFile);
-#endif
 
 						return chain.Build(certificate);
 					},
@@ -60,12 +55,7 @@ namespace KurrentDB.Client {
 			var request = CreateRequest(path, HttpMethod.Get, channelInfo, userCredentials);
 
 			var httpResult = await HttpSendAsync(request, onNotFound, deadline, cancellationToken).ConfigureAwait(false);
-
-#if NET
 			var json = await httpResult.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-#else
-			var json = await httpResult.Content.ReadAsStringAsync().ConfigureAwait(false);
-#endif
 
 			var result = JsonSerializer.Deserialize<T>(json, _jsonSettings);
 			if (result == null) {

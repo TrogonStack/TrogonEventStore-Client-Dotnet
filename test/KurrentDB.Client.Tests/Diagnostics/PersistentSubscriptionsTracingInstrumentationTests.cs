@@ -1,5 +1,6 @@
 using KurrentDB.Client.Tests.Fixtures;
 using KurrentDB.Client.Tests.TestNode;
+using KurrentDB.Diagnostics.Telemetry;
 using KurrentDB.Diagnostics.Tracing;
 
 namespace KurrentDB.Client.Tests.Diagnostics;
@@ -35,22 +36,31 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 			.ShouldNotBeNull();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Subscribe, traceId)
+			.GetActivities(TracingConstants.Operations.Subscribe, traceId, stream)
 			.ToArray();
+		var expectedEventIds = events.Select(@event => @event.EventId.ToString()).ToHashSet();
+		var actualEventIds = subscribeActivities
+			.Select(activity => Assert.IsType<string>(activity.GetTagItem(TelemetryTags.KurrentDB.EventId)))
+			.ToHashSet();
 
 		subscriptionId.ShouldNotBeNull();
-		subscribeActivities.Length.ShouldBe(events.Length);
+		Assert.NotEmpty(subscribeActivities);
+		Assert.True(expectedEventIds.SetEquals(actualEventIds));
 
-		for (var i = 0; i < subscribeActivities.Length; i++) {
-			subscribeActivities[i].TraceId.ShouldBe(appendActivity.Context.TraceId);
-			subscribeActivities[i].ParentSpanId.ShouldBe(appendActivity.Context.SpanId);
-			subscribeActivities[i].HasRemoteParent.ShouldBeTrue();
+		foreach (var subscribeActivity in subscribeActivities) {
+			subscribeActivity.TraceId.ShouldBe(appendActivity.Context.TraceId);
+			subscribeActivity.ParentSpanId.ShouldBe(appendActivity.Context.SpanId);
+			subscribeActivity.HasRemoteParent.ShouldBeTrue();
+			Assert.False(
+				string.IsNullOrWhiteSpace(
+					Assert.IsType<string>(subscribeActivity.GetTagItem(TelemetryTags.KurrentDB.SubscriptionId))
+				)
+			);
 
 			Fixture.AssertSubscriptionActivityHasExpectedTags(
-				subscribeActivities[i],
+				subscribeActivity,
 				stream,
-				events[i].EventId.ToString(),
-				subscriptionId
+				Assert.IsType<string>(subscribeActivity.GetTagItem(TelemetryTags.KurrentDB.EventId))
 			);
 		}
 
@@ -60,16 +70,16 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 			await using var subscription = Fixture.Subscriptions.SubscribeToStream(stream, groupName);
 			await using var enumerator   = subscription.Messages.GetAsyncEnumerator();
 
-			int eventsAppeared = 0;
+			var remainingEventIds = events.Select(@event => @event.EventId).ToHashSet();
 			while (await enumerator.MoveNextAsync()) {
 				if (enumerator.Current is PersistentSubscriptionMessage.SubscriptionConfirmation(var sid))
 					subscriptionId = sid;
 
-				if (enumerator.Current is not PersistentSubscriptionMessage.Event(_, _))
+				if (enumerator.Current is not PersistentSubscriptionMessage.Event(var resolvedEvent, _))
 					continue;
 
-				eventsAppeared++;
-				if (eventsAppeared >= events.Length)
+				remainingEventIds.Remove(resolvedEvent.Event.EventId);
+				if (remainingEventIds.Count == 0)
 					return;
 			}
 		}

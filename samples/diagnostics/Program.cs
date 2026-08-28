@@ -2,7 +2,6 @@
 using KurrentDB.Client.Extensions.OpenTelemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using OpenTelemetry.Exporter;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 
@@ -15,7 +14,7 @@ using OpenTelemetry.Resources;
 dotnet add package EventStore.Client.Extensions.OpenTelemetry
 
 // recommended
-dotnet add package OpenTelemetry.Exporter.Jaeger
+dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 dotnet add package OpenTelemetry.Exporter.Console
 dotnet add package OpenTelemetry
 dotnet add package Microsoft.Extensions.Hosting
@@ -84,10 +83,9 @@ static async Task TraceAppendToStream(KurrentDBClient client) {
 
 		tracerProviderBuilder
 			.AddConsoleExporter()
-			.AddJaegerExporter(
+			.AddOtlpExporter(
 				options => {
 					options.Endpoint = new Uri("http://localhost:4317");
-					options.Protocol = JaegerExportProtocol.UdpCompactThrift;
 				}
 			);
 

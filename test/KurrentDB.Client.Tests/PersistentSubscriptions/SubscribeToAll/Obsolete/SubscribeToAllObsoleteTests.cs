@@ -109,12 +109,8 @@ public class SubscribeToAllObsoleteTests(ITestOutputHelper output, KurrentDBPerm
 		using var subscription = await Fixture.Subscriptions.SubscribeToAllAsync(
 			group,
 			async (subscription, e, r, ct) => {
-				if (SystemStreams.IsSystemStream(e.OriginalStreamId)) {
-					await subscription.Ack(e);
-					return;
-				}
-
-				firstNonSystemEventSource.TrySetResult(e);
+				if (e.OriginalEvent.EventId == expectedEvent.EventId)
+					firstNonSystemEventSource.TrySetResult(e);
 				await subscription.Ack(e);
 			},
 			(subscription, reason, ex) => {
@@ -152,12 +148,8 @@ public class SubscribeToAllObsoleteTests(ITestOutputHelper output, KurrentDBPerm
 		using var subscription = await Fixture.Subscriptions.SubscribeToAllAsync(
 			group,
 			async (subscription, e, r, ct) => {
-				if (SystemStreams.IsSystemStream(e.OriginalStreamId)) {
-					await subscription.Ack(e);
-					return;
-				}
-
-				firstNonSystemEventSource.TrySetResult(e);
+				if (e.OriginalEvent.EventId == expectedEvent.EventId)
+					firstNonSystemEventSource.TrySetResult(e);
 				await subscription.Ack(e);
 			},
 			(subscription, reason, ex) => {

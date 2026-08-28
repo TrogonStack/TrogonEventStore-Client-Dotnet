@@ -4,6 +4,8 @@ namespace KurrentDB.Client.Tests.Streams;
 [Trait("Category", "Target:Streams")]
 public class SubscribeToStreamTests(ITestOutputHelper output, SubscribeToStreamTests.CustomFixture fixture)
 	: KurrentDBPermanentTests<SubscribeToStreamTests.CustomFixture>(output, fixture) {
+	static readonly TimeSpan ClockSkewTolerance = TimeSpan.FromSeconds(1);
+
 	[RetryFact]
 	public async Task exposes_caught_up_context() {
 		var streamName = Fixture.GetStreamName();
@@ -23,7 +25,11 @@ public class SubscribeToStreamTests(ITestOutputHelper output, SubscribeToStreamT
 				if (enumerator.Current is not StreamMessage.CaughtUp caughtUp)
 					continue;
 
-				Assert.InRange(caughtUp.Timestamp, startedAt, DateTimeOffset.UtcNow);
+				Assert.InRange(
+					caughtUp.Timestamp,
+					startedAt - ClockSkewTolerance,
+					DateTimeOffset.UtcNow + ClockSkewTolerance
+				);
 				Assert.Equal(new StreamPosition(0), caughtUp.StreamPosition);
 				Assert.Null(caughtUp.Position);
 				return;

@@ -85,11 +85,7 @@ namespace KurrentDB.Client {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static long BitConverterToInt64(ReadOnlySpan<byte> value)
 		{
-#if NET
 			return BitConverter.ToInt64(value);
-#else
-			return Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetReference(value));
-#endif
 		}
 
 		private Uuid(string value) : this(value == null
@@ -170,12 +166,7 @@ namespace KurrentDB.Client {
 			data.Slice(4, 2).Reverse();
 			data.Slice(6, 2).Reverse();
 			data[8..].Reverse();
-
-#if NET
 			return new Guid(data);
-#else
-			return new Guid(data.ToArray());
-#endif
 		}
 		private static bool TryWriteBytes(Span<byte> destination, long value)
 		{
@@ -188,16 +179,7 @@ namespace KurrentDB.Client {
 
 		private bool TryWriteGuidBytes(Guid value, Span<byte> destination)
 		{
-#if NET
 			return value.TryWriteBytes(destination);
-#else
-			if (destination.Length < 16)
-				return false;
-
-			var bytes = value.ToByteArray();
-			bytes.CopyTo(destination);
-			return true;
-#endif
 		}
 	}
 }

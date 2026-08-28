@@ -225,11 +225,7 @@ namespace KurrentDB.Client {
 					}
 
 					try {
-#if NET9_0_OR_GREATER
 						settings.ConnectivitySettings.TlsCaFile = X509CertificateLoader.LoadCertificateFromFile(tlsCaFilePath);
-#else
-						settings.ConnectivitySettings.TlsCaFile = new X509Certificate2(tlsCaFilePath);
-#endif
 					} catch (CryptographicException) {
 						throw new InvalidClientCertificateException("Failed to load certificate. Invalid file format.");
 					}
@@ -240,35 +236,6 @@ namespace KurrentDB.Client {
 				settings.CreateHttpMessageHandler = CreateDefaultHandler;
 
 				return settings;
-
-#if NET48
-				HttpMessageHandler CreateDefaultHandler() {
-					var handler = new WinHttpHandler {
-						TcpKeepAliveEnabled = true,
-						TcpKeepAliveTime = settings.ConnectivitySettings.KeepAliveTimeout,
-						TcpKeepAliveInterval = settings.ConnectivitySettings.KeepAliveInterval,
-						EnableMultipleHttp2Connections = true
-					};
-
-					if (settings.ConnectivitySettings.Insecure) return handler;
-
-					if (settings.ConnectivitySettings.ClientCertificate is not null)
-						handler.ClientCertificates.Add(settings.ConnectivitySettings.ClientCertificate);
-
-					handler.ServerCertificateValidationCallback = settings.ConnectivitySettings.TlsVerifyCert switch {
-						false => delegate { return true; },
-						true when settings.ConnectivitySettings.TlsCaFile is not null => (sender, certificate, chain, errors) => {
-							if (chain is null) return false;
-
-							chain.ChainPolicy.ExtraStore.Add(settings.ConnectivitySettings.TlsCaFile);
-							return chain.Build(certificate);
-						},
-						_ => null
-					};
-
-					return handler;
-				}
-#else
 				HttpMessageHandler CreateDefaultHandler() {
 					var handler = new SocketsHttpHandler {
 						KeepAlivePingDelay             = settings.ConnectivitySettings.KeepAliveInterval,
@@ -299,7 +266,6 @@ namespace KurrentDB.Client {
 
 					return handler;
 				}
-#endif
 			}
 
 			static void ConfigureClientCertificate(KurrentDBClientSettings settings, IReadOnlyDictionary<string, object> options) {
