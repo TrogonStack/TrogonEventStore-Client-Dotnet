@@ -3,15 +3,12 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using KurrentDB.Diagnostics.Telemetry;
-using KurrentDB.Diagnostics.Tracing;
+
+using static KurrentDB.Diagnostics.Tracing.TracingConstants;
 
 namespace KurrentDB.Diagnostics;
 
 static class ActivityExtensions {
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static TracingMetadata GetTracingMetadata(this Activity activity) =>
-		new(activity.TraceId.ToString(), activity.SpanId.ToString());
-
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static Activity StatusOk(this Activity activity, string? description = null) =>
 		activity.SetActivityStatus(ActivityStatus.Ok(description));
@@ -22,30 +19,30 @@ static class ActivityExtensions {
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	static Activity RecordException(this Activity activity, Exception? exception) {
-		if (exception is null) return activity;
+		if (exception is null)
+			return activity;
 
 		var ex = exception is AggregateException aex ? aex.Flatten() : exception;
 
 		var tags = new ActivityTagsCollection {
-			{ TelemetryTags.Exception.Type, ex.GetType().FullName },
-			{ TelemetryTags.Exception.Stacktrace, ex.ToInvariantString() }
+			{ TelemetryAttributes.ExceptionType, ex.GetType().FullName },
+			{ TelemetryAttributes.ExceptionStacktrace, ex.ToInvariantString() }
 		};
 
 		if (!string.IsNullOrWhiteSpace(exception.Message))
-			tags.Add(TelemetryTags.Exception.Message, ex.Message);
+			tags.Add(TelemetryAttributes.ExceptionMessage, ex.Message);
 
-		activity.AddEvent(new ActivityEvent(TelemetryTags.Exception.EventName, default, tags));
+		activity.AddEvent(new ActivityEvent(ExceptionEventName, default, tags));
 
 		return activity;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	static Activity SetActivityStatus(this Activity activity, ActivityStatus status) {
-		var statusCode = ActivityStatusCodeHelper.GetTagValueForStatusCode(status.StatusCode);
-
 		activity.SetStatus(status.StatusCode, status.Description);
-		activity.SetTag(TelemetryTags.Otel.StatusCode, statusCode);
-		activity.SetTag(TelemetryTags.Otel.StatusDescription, status.Description);
+
+		if (status.Exception is { } exception)
+			activity.SetTag(TelemetryAttributes.ErrorType, exception.GetType().FullName);
 
 		return activity.IsAllDataRequested ? activity.RecordException(status.Exception) : activity;
 	}

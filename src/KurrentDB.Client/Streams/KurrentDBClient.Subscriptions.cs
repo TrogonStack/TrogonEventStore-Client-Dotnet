@@ -242,11 +242,10 @@ namespace KurrentDB.Client {
 
                             if (subscriptionMessage is StreamMessage.Event evt)
                                 KurrentDBClientDiagnostics.ActivitySource.TraceSubscriptionEvent(
-                                    SubscriptionId,
+                                    null,
                                     evt.ResolvedEvent,
                                     channelInfo,
-                                    _settings,
-                                    userCredentials
+                                    _settings
                                 );
 
                             await _channel.Writer

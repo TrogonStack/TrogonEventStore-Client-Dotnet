@@ -51,11 +51,11 @@ public partial class KurrentDBClient {
 		var client = new StreamsServiceClient(channelInfo.CallInvoker);
 
 		var tags = new ActivityTagsCollection()
+			.WithRequiredTag(TelemetryAttributes.DbOperationBatchSize, recordsList.Count)
 			.WithGrpcChannelServerTags(channelInfo)
-			.WithClientSettingsServerTags(Settings)
-			.WithOptionalTag(TelemetryTags.Database.User, Settings.DefaultCredentials?.Username);
+			.WithClientSettingsServerTags(Settings);
 
-		return await KurrentDBClientDiagnostics.ActivitySource.TraceClientOperation(Operation, Operations.MultiAppend, tags).ConfigureAwait(false);
+		return await KurrentDBClientDiagnostics.ActivitySource.TraceClientOperation(Operation, Operations.BatchAppend, tags).ConfigureAwait(false);
 
 		async ValueTask<AppendRecordsResponse> Operation() {
 			try {

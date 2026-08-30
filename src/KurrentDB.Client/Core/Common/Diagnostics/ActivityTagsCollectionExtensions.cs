@@ -6,30 +6,30 @@ using KurrentDB.Diagnostics.Telemetry;
 namespace KurrentDB.Client.Diagnostics;
 
 static class ActivityTagsCollectionExtensions {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ActivityTagsCollection WithGrpcChannelServerTags(this ActivityTagsCollection tags, ChannelInfo? channelInfo) {
-        if (channelInfo is null)
-            return tags;
-        
-        var authorityParts = channelInfo.Channel.Target.Split(':');
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ActivityTagsCollection WithGrpcChannelServerTags(this ActivityTagsCollection tags, ChannelInfo? channelInfo) {
+		if (channelInfo is null)
+			return tags;
 
-        tags = tags.WithRequiredTag(TelemetryTags.Server.Address, authorityParts[0]);
+		var authorityParts = channelInfo.Channel.Target.Split(':');
 
-        if (authorityParts.Length > 1)
-            tags = tags.WithRequiredTag(TelemetryTags.Server.Port, int.Parse(authorityParts[1]));
+		tags = tags.WithRequiredTag(TelemetryAttributes.ServerAddress, authorityParts[0]);
 
-        return tags;
-    }
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ActivityTagsCollection WithClientSettingsServerTags(this ActivityTagsCollection source, KurrentDBClientSettings settings) {
-        if (settings.ConnectivitySettings.DnsGossipSeeds?.Length != 1)
-            return source;
-        
-        var gossipSeed = settings.ConnectivitySettings.DnsGossipSeeds[0];
+		if (authorityParts.Length > 1)
+			tags = tags.WithRequiredTag(TelemetryAttributes.ServerPort, int.Parse(authorityParts[1]));
 
-        return source
-            .WithRequiredTag(TelemetryTags.Server.Address, gossipSeed.Host)
-            .WithRequiredTag(TelemetryTags.Server.Port, gossipSeed.Port);
-    }
+		return tags;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static ActivityTagsCollection WithClientSettingsServerTags(this ActivityTagsCollection source, KurrentDBClientSettings settings) {
+		if (settings.ConnectivitySettings.DnsGossipSeeds?.Length != 1)
+			return source;
+
+		var gossipSeed = settings.ConnectivitySettings.DnsGossipSeeds[0];
+
+		return source
+			.WithRequiredTag(TelemetryAttributes.ServerAddress, gossipSeed.Host)
+			.WithRequiredTag(TelemetryAttributes.ServerPort, gossipSeed.Port);
+	}
 }

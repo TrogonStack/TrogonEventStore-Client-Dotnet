@@ -6,15 +6,17 @@ using KurrentDB.Client.Diagnostics;
 using KurrentDB.Client.Tests.Fixtures;
 using KurrentDB.Diagnostics.Telemetry;
 using KurrentDB.Diagnostics.Tracing;
-using static KurrentDB.Diagnostics.Tracing.TracingConstants;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 
 namespace KurrentDB.Client.Tests.Diagnostics;
 
 [Trait("Category", "Target:Diagnostics")]
+[Collection(DiagnosticsCollection.Name)]
 public class StreamsTracingInstrumentationTests(ITestOutputHelper output, DiagnosticsFixture fixture) : KurrentDBPermanentTests<DiagnosticsFixture>(output, fixture) {
 	[Fact]
 	public void trace_contexts_are_independent() {
-		var first  = Fixture.CreateTraceId();
+		var first = Fixture.CreateTraceId();
 		var second = Fixture.CreateTraceId();
 
 		Assert.NotEqual(first, second);
@@ -69,8 +71,8 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		// Assert
 		appendResult.Position.ShouldBePositive();
 
-		var appendActivities    = Fixture.GetActivities(TracingConstants.Operations.MultiAppend, traceId);
-		var subscribeActivities = Fixture.GetActivities(TracingConstants.Operations.Subscribe, traceId);
+		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.BatchAppend, traceId);
+		var subscribeActivities = Fixture.GetActivities(TracingConstants.Operations.Process, traceId);
 
 		appendActivities.ShouldNotBeEmpty();
 		subscribeActivities.ShouldNotBeEmpty();
@@ -130,7 +132,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		var rex = await appendTask.ShouldThrowAsync<WrongExpectedVersionException>();
 
 		// Assert
-		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.MultiAppend, traceId);
+		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.BatchAppend, traceId);
 
 		appendActivities.ShouldNotBeEmpty();
 
@@ -142,10 +144,10 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 
 		var activityEvent = activity.Events.First();
 
-		activityEvent.Name.ShouldBe(TelemetryTags.Exception.EventName);
-		activityEvent.Tags.Any(tag => tag.Key == TelemetryTags.Exception.Message).ShouldBeTrue();
-		activityEvent.Tags.Any(tag => tag.Key == TelemetryTags.Exception.Stacktrace).ShouldBeTrue();
-		activityEvent.Tags.Any(tag => tag.Key == TelemetryTags.Exception.Type && (string?)tag.Value == rex.GetType().FullName).ShouldBeTrue();
+		activityEvent.Name.ShouldBe(TracingConstants.ExceptionEventName);
+		activityEvent.Tags.Any(tag => tag.Key == TelemetryAttributes.ExceptionMessage).ShouldBeTrue();
+		activityEvent.Tags.Any(tag => tag.Key == TelemetryAttributes.ExceptionStacktrace).ShouldBeTrue();
+		activityEvent.Tags.Any(tag => tag.Key == TelemetryAttributes.ExceptionType && (string?)tag.Value == rex.GetType().FullName).ShouldBeTrue();
 	}
 
 	[Fact]
@@ -187,11 +189,59 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 			.ReadStreamAsync(Direction.Forwards, stream, StreamPosition.Start)
 			.ToListAsync();
 
-		var tracingMetadata = readResult[0].OriginalEvent.Metadata.ExtractTracingMetadata();
+		var propagationContext = readResult[0].OriginalEvent.Metadata.ExtractPropagationContext();
 
-		tracingMetadata.ShouldNotBe(TracingMetadata.None);
-		tracingMetadata.TraceId.ShouldBe(activity.TraceId.ToString());
-		tracingMetadata.SpanId.ShouldBe(activity.SpanId.ToString());
+		propagationContext.ActivityContext.ShouldNotBe(default);
+		propagationContext.ActivityContext.TraceId.ShouldBe(activity.TraceId);
+		propagationContext.ActivityContext.SpanId.ShouldBe(activity.SpanId);
+	}
+
+	[Fact]
+	public async Task subscription_restores_tracestate_and_baggage() {
+		var traceId = Fixture.CreateTraceId();
+		Activity.Current!.TraceStateString = "vendor=value";
+		var originalBaggage = Baggage.Current;
+		var originalPropagator = Propagators.DefaultTextMapPropagator;
+		var stream = Fixture.GetStreamName();
+		var seedEvent = Fixture.CreateTestEvent(metadata: Fixture.CreateTestJsonMetadata());
+
+		try {
+			Sdk.SetDefaultTextMapPropagator(new CompositeTextMapPropagator([
+				new TraceContextPropagator(),
+				new BaggagePropagator()
+			]));
+			Baggage.Current = Baggage.Create(new Dictionary<string, string> { ["tenant"] = "straw-hat" });
+			await Fixture.Streams.AppendToStreamAsync(stream, StreamState.NoStream, [seedEvent]);
+
+			await using var subscription = Fixture.Streams.SubscribeToStream(stream, FromStream.Start);
+			await using var enumerator = subscription.Messages.GetAsyncEnumerator();
+
+			Assert.True(await enumerator.MoveNextAsync());
+			Assert.IsType<StreamMessage.SubscriptionConfirmation>(enumerator.Current);
+			Assert.True(await enumerator.MoveNextAsync());
+			Assert.IsType<StreamMessage.Event>(enumerator.Current);
+
+			var appendActivity = Fixture
+				.GetActivities(TracingConstants.Operations.Append, traceId)
+				.ShouldHaveSingleItem();
+			var subscriptionActivities = Fixture
+				.GetActivities(TracingConstants.Operations.Process, traceId, stream)
+				.Where(activity => Equals(activity.GetTagItem(TelemetryAttributes.MessagingMessageId), seedEvent.EventId.ToString()))
+				.ToArray();
+
+			Assert.NotEmpty(subscriptionActivities);
+			Assert.All(
+				subscriptionActivities,
+				subscriptionActivity => {
+					subscriptionActivity.ParentSpanId.ShouldBe(appendActivity.SpanId);
+					subscriptionActivity.TraceStateString.ShouldBe("vendor=value");
+					subscriptionActivity.Baggage.ShouldContain(new KeyValuePair<string, string?>("tenant", "straw-hat"));
+				}
+			);
+		} finally {
+			Baggage.Current = originalBaggage;
+			Sdk.SetDefaultTextMapPropagator(originalPropagator);
+		}
 	}
 
 	[Fact]
@@ -214,7 +264,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 	}
 
 	[Fact]
-	public async Task tracing_context_not_duplicated_when_already_present() {
+	public async Task tracing_context_replaced_when_already_present() {
 		// Arrange
 		var stream = Fixture.GetStreamName();
 
@@ -222,8 +272,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		activity.Start();
 
 		var metadata = new Dictionary<string, string> {
-			[Metadata.TraceId] = activity.TraceId.ToString(),
-			[Metadata.SpanId]  = activity.SpanId.ToString()
+			["traceparent"] = $"00-{activity.TraceId}-{activity.SpanId}-00"
 		};
 
 		// Act
@@ -234,11 +283,19 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 			.ReadStreamAsync(Direction.Forwards, stream, StreamPosition.Start, maxCount: 1)
 			.ToListAsync();
 
-		var tracingMetadata = result.First().OriginalEvent.Metadata.ExtractTracingMetadata();
+		var outputMetadata = result.First().OriginalEvent.Metadata;
+		var propagationContext = outputMetadata.ExtractPropagationContext();
+		var appendActivity = Fixture
+			.GetActivities(TracingConstants.Operations.Append, activity.TraceId)
+			.ShouldHaveSingleItem();
 
-		tracingMetadata.ShouldNotBe(TracingMetadata.None);
-		tracingMetadata.TraceId.ShouldBe(activity.TraceId.ToString());
-		tracingMetadata.SpanId.ShouldBe(activity.SpanId.ToString());
+		propagationContext.ActivityContext.ShouldNotBe(default);
+		propagationContext.ActivityContext.TraceId.ShouldBe(appendActivity.TraceId);
+		propagationContext.ActivityContext.SpanId.ShouldBe(appendActivity.SpanId);
+		propagationContext.ActivityContext.TraceFlags.ShouldBe(appendActivity.ActivityTraceFlags);
+
+		using var document = JsonDocument.Parse(outputMetadata);
+		document.RootElement.EnumerateObject().Count(property => property.Name == "traceparent").ShouldBe(1);
 	}
 
 	[Fact]
@@ -283,7 +340,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		await Fixture.Streams.AppendToStreamAsync(streamName, StreamState.NoStream, seedEvents);
 
 		await using var subscription = Fixture.Streams.SubscribeToStream(streamName, FromStream.Start);
-		await using var enumerator   = subscription.Messages.GetAsyncEnumerator();
+		await using var enumerator = subscription.Messages.GetAsyncEnumerator();
 
 		var appendActivities = Fixture
 			.GetActivities(TracingConstants.Operations.Append, traceId)
@@ -296,7 +353,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		await Subscribe(enumerator).WithTimeout();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Subscribe, traceId, streamName)
+			.GetActivities(TracingConstants.Operations.Process, traceId, streamName)
 			.ToArray();
 
 		appendActivities.ShouldHaveSingleItem();
@@ -334,7 +391,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 	[Trait("Category", "Special cases")]
 	public async Task no_trace_when_event_is_null() {
 		var traceId = Fixture.CreateTraceId();
-		var category   = Guid.NewGuid().ToString("N");
+		var category = Guid.NewGuid().ToString("N");
 		var streamName = category + "-123";
 		var categoryStream = "$ce-" + category;
 
@@ -358,7 +415,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 			.ShouldNotBeNull();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Subscribe, traceId, categoryStream)
+			.GetActivities(TracingConstants.Operations.Process, traceId, categoryStream)
 			.ToArray();
 
 		appendActivities.ShouldHaveSingleItem();

@@ -6,6 +6,7 @@ using KurrentDB.Diagnostics.Tracing;
 namespace KurrentDB.Client.Tests.Diagnostics;
 
 [Trait("Category", "Target:Diagnostics")]
+[Collection(DiagnosticsCollection.Name)]
 public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelper output, DiagnosticsFixture fixture)
 	: KurrentDBPermanentTests<DiagnosticsFixture>(output, fixture) {
 	[RetryFact]
@@ -36,11 +37,15 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 			.ShouldNotBeNull();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Subscribe, traceId, stream)
+			.GetActivities(TracingConstants.Operations.Process, traceId, stream)
+			.Where(activity => Equals(
+				activity.GetTagItem(TelemetryAttributes.MessagingConsumerGroupName),
+				groupName
+			))
 			.ToArray();
 		var expectedEventIds = events.Select(@event => @event.EventId.ToString()).ToHashSet();
 		var actualEventIds = subscribeActivities
-			.Select(activity => Assert.IsType<string>(activity.GetTagItem(TelemetryTags.KurrentDB.EventId)))
+			.Select(activity => Assert.IsType<string>(activity.GetTagItem(TelemetryAttributes.MessagingMessageId)))
 			.ToHashSet();
 
 		subscriptionId.ShouldNotBeNull();
@@ -51,16 +56,13 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 			subscribeActivity.TraceId.ShouldBe(appendActivity.Context.TraceId);
 			subscribeActivity.ParentSpanId.ShouldBe(appendActivity.Context.SpanId);
 			subscribeActivity.HasRemoteParent.ShouldBeTrue();
-			Assert.False(
-				string.IsNullOrWhiteSpace(
-					Assert.IsType<string>(subscribeActivity.GetTagItem(TelemetryTags.KurrentDB.SubscriptionId))
-				)
-			);
+			subscribeActivity.GetTagItem(TelemetryAttributes.MessagingConsumerGroupName).ShouldBe(groupName);
 
 			Fixture.AssertSubscriptionActivityHasExpectedTags(
 				subscribeActivity,
 				stream,
-				Assert.IsType<string>(subscribeActivity.GetTagItem(TelemetryTags.KurrentDB.EventId))
+				Assert.IsType<string>(subscribeActivity.GetTagItem(TelemetryAttributes.MessagingMessageId)),
+				groupName
 			);
 		}
 
@@ -68,7 +70,7 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 
 		async Task Subscribe() {
 			await using var subscription = Fixture.Subscriptions.SubscribeToStream(stream, groupName);
-			await using var enumerator   = subscription.Messages.GetAsyncEnumerator();
+			await using var enumerator = subscription.Messages.GetAsyncEnumerator();
 
 			var remainingEventIds = events.Select(@event => @event.EventId).ToHashSet();
 			while (await enumerator.MoveNextAsync()) {
@@ -113,7 +115,7 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 
 		async Task Subscribe() {
 			await using var subscription = Fixture.Subscriptions.SubscribeToStream(stream, groupName);
-			await using var enumerator   = subscription.Messages.GetAsyncEnumerator();
+			await using var enumerator = subscription.Messages.GetAsyncEnumerator();
 
 			var eventsAppeared = 0;
 			while (await enumerator.MoveNextAsync()) {
@@ -153,7 +155,7 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 
 		async Task Subscribe() {
 			await using var subscription = Fixture.Subscriptions.SubscribeToStream(stream, groupName);
-			await using var enumerator   = subscription.Messages.GetAsyncEnumerator();
+			await using var enumerator = subscription.Messages.GetAsyncEnumerator();
 
 			var eventsAppeared = 0;
 			while (await enumerator.MoveNextAsync()) {

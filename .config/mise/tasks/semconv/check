@@ -1,0 +1,22 @@
+#!/bin/sh
+#MISE description="Validate the client semantic convention registry and generated constants"
+
+set -eu
+
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../../../.." && pwd)
+expected="$root/src/KurrentDB.Client/Core/Common/Diagnostics/Generated"
+generated=$(mktemp -d)
+trap 'rm -rf "$generated"' EXIT HUP INT TERM
+
+"$root/.config/mise/tasks/semconv/generate" "$generated"
+diff -ru "$expected" "$generated"
+
+for generated_file in "$expected"/*.g.cs
+do
+	last_byte=$(tail -c 1 "$generated_file" | od -An -t u1 | tr -d '[:space:]')
+	newline_count=$(tail -c 2 "$generated_file" | wc -l | tr -d '[:space:]')
+	if [ "$last_byte" != 10 ] || [ "$newline_count" != 1 ]; then
+		echo "$generated_file must end with exactly one newline." >&2
+		exit 1
+	fi
+done

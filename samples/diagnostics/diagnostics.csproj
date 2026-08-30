@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <RootNamespace>connecting_to_a_cluster</RootNamespace>
+        <RootNamespace>diagnostics</RootNamespace>
     </PropertyGroup>
 
 	<ItemGroup>

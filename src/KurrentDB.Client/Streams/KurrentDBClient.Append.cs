@@ -68,10 +68,9 @@ namespace KurrentDB.Client {
 			CancellationToken cancellationToken
 		) {
 			var tags = new ActivityTagsCollection()
-				.WithRequiredTag(TelemetryTags.KurrentDB.Stream, header.Options.StreamIdentifier.StreamName.ToStringUtf8())
+				.WithRequiredTag(TelemetryAttributes.DbCollectionName, header.Options.StreamIdentifier.StreamName.ToStringUtf8())
 				.WithGrpcChannelServerTags(channelInfo)
-				.WithClientSettingsServerTags(Settings)
-				.WithOptionalTag(TelemetryTags.Database.User, userCredentials?.Username ?? Settings.DefaultCredentials?.Username);
+				.WithClientSettingsServerTags(Settings);
 
 			return KurrentDBClientDiagnostics.ActivitySource.TraceClientOperation(Operation, TracingConstants.Operations.Append, tags);
 
@@ -228,10 +227,9 @@ namespace KurrentDB.Client {
 				CancellationToken cancellationToken
 			) {
 				var tags = new ActivityTagsCollection()
-					.WithRequiredTag(TelemetryTags.KurrentDB.Stream, options.StreamIdentifier.StreamName.ToStringUtf8())
+					.WithRequiredTag(TelemetryAttributes.DbCollectionName, options.StreamIdentifier.StreamName.ToStringUtf8())
 					.WithGrpcChannelServerTags(_channelInfo)
-					.WithClientSettingsServerTags(_settings)
-					.WithOptionalTag(TelemetryTags.Database.User, _settings.DefaultCredentials?.Username);
+					.WithClientSettingsServerTags(_settings);
 
 				return KurrentDBClientDiagnostics.ActivitySource.TraceClientOperation(
 					Operation,
