@@ -1,7 +1,8 @@
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using EventStore.Client;
-using KurrentDB.Client.Diagnostics;
 using Grpc.Core;
+using KurrentDB.Client.Diagnostics;
 using KurrentDB.Protocol.PersistentSubscriptions.V1;
 using static KurrentDB.Protocol.PersistentSubscriptions.V1.PersistentSubscriptions;
 using static KurrentDB.Protocol.PersistentSubscriptions.V1.ReadResp.ContentOneofCase;
@@ -175,8 +176,10 @@ namespace KurrentDB.Client {
             readonly Channel<PersistentSubscriptionMessage> _channel;
             readonly CancellationTokenSource                _cts;
             readonly CallOptions                            _callOptions;
+			readonly KurrentDBClientSettings                _settings;
 
             AsyncDuplexStreamingCall<ReadReq, ReadResp>? _call;
+			ChannelInfo?                                _channelInfo;
             int                                          _messagesEnumerated;
 
 			/// <summary>
@@ -206,7 +209,7 @@ namespace KurrentDB.Client {
 
 					async IAsyncEnumerable<PersistentSubscriptionMessage> GetMessages() {
                         try {
-                            await foreach (var message in _channel.Reader.ReadAllAsync(_cts.Token)) {
+							await foreach (var message in ReadMessages(_cts.Token)) {
                                 if (message is PersistentSubscriptionMessage.SubscriptionConfirmation(var subscriptionId)) 
                                     SubscriptionId = subscriptionId;
 
@@ -230,6 +233,7 @@ namespace KurrentDB.Client {
 				GroupName  = groupName;
 
 				_request = request;
+				_settings = settings;
 
 				_callOptions = KurrentDBCallOptions.CreateStreaming(
 					settings,
@@ -248,6 +252,7 @@ namespace KurrentDB.Client {
 				async Task PumpMessages() {
 					try {
                         var channelInfo = await selectChannelInfo(_cts.Token).ConfigureAwait(false);
+						_channelInfo = channelInfo;
                         var client      = new PersistentSubscriptionsClient(channelInfo.CallInvoker);
 
 						_call = client.Read(_callOptions);
@@ -268,14 +273,6 @@ namespace KurrentDB.Client {
 								),
 								_ => PersistentSubscriptionMessage.Unknown.Instance
 							};
-
-							if (subscriptionMessage is PersistentSubscriptionMessage.Event evnt)
-								KurrentDBClientDiagnostics.ActivitySource.TraceSubscriptionEvent(
-									GroupName,
-									evnt.ResolvedEvent,
-									channelInfo,
-									settings
-								);
 
 							await _channel.Writer.WriteAsync(subscriptionMessage, _cts.Token).ConfigureAwait(false);
 						}
@@ -454,6 +451,26 @@ namespace KurrentDB.Client {
                         continue;
 
 					yield return resolvedEvent;
+				}
+			}
+
+			async IAsyncEnumerable<PersistentSubscriptionMessage> ReadMessages(
+				[EnumeratorCancellation] CancellationToken cancellationToken
+			) {
+				await using var messages = _channel.Reader
+					.ReadAllAsync(cancellationToken)
+					.GetAsyncEnumerator(cancellationToken);
+
+				while (true) {
+					var receive = KurrentDBClientDiagnostics.ActivitySource.StartSubscriptionReceive(GroupName);
+					if (!await messages.MoveNextAsync().ConfigureAwait(false))
+						yield break;
+
+					var message = messages.Current;
+					if (message is PersistentSubscriptionMessage.Event(var resolvedEvent, _))
+						receive.Complete(resolvedEvent, _channelInfo!, _settings);
+
+					yield return message;
 				}
 			}
 		}

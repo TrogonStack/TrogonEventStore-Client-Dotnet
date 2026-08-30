@@ -7,6 +7,9 @@ using OpenTelemetry.Context.Propagation;
 namespace KurrentDB.Client.Diagnostics;
 
 static class EventMetadataExtensions {
+	const string TraceParent = "traceparent";
+	const string TraceState = "tracestate";
+
 	public static void InjectTracingContext(this Dictionary<string, string> metadata, Activity? activity) {
 		if (activity is null)
 			return;
@@ -19,6 +22,9 @@ static class EventMetadataExtensions {
 	}
 
 	static void SetPropagationField(Dictionary<string, string> metadata, string name, string value) {
+		if (!IsPersistedTraceField(name))
+			return;
+
 		while (true) {
 			string? existingName = null;
 			foreach (var key in metadata.Keys) {
@@ -38,6 +44,10 @@ static class EventMetadataExtensions {
 		metadata[name] = value;
 	}
 
+	static bool IsPersistedTraceField(string name) =>
+		string.Equals(name, TraceParent, StringComparison.OrdinalIgnoreCase) ||
+		string.Equals(name, TraceState, StringComparison.OrdinalIgnoreCase);
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ReadOnlySpan<byte> InjectTracingContext(
 		this ReadOnlyMemory<byte> eventMetadata, Activity? activity
@@ -49,7 +59,7 @@ static class EventMetadataExtensions {
 		Propagators.DefaultTextMapPropagator.Inject(
 			new PropagationContext(activity.Context, Baggage.Current),
 			propagationMetadata,
-			static (carrier, name, value) => carrier[name] = value
+			static (carrier, name, value) => SetPropagationField(carrier, name, value)
 		);
 
 		return eventMetadata.InjectPropagationMetadata(propagationMetadata);

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using KurrentDB.Client.Tests.Fixtures;
 using KurrentDB.Client.Tests.TestNode;
 using KurrentDB.Diagnostics.Telemetry;
@@ -10,8 +11,9 @@ namespace KurrentDB.Client.Tests.Diagnostics;
 public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelper output, DiagnosticsFixture fixture)
 	: KurrentDBPermanentTests<DiagnosticsFixture>(output, fixture) {
 	[RetryFact]
-	public async Task persistent_subscription_restores_remote_append_context() {
+	public async Task persistent_subscription_receive_links_remote_append_context() {
 		var traceId = Fixture.CreateTraceId();
+		var subscriber = Activity.Current!;
 		var stream = Fixture.GetStreamName();
 		var events = Fixture.CreateTestEvents(2, metadata: Fixture.CreateTestJsonMetadata()).ToArray();
 
@@ -37,7 +39,7 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 			.ShouldNotBeNull();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Process, traceId, stream)
+			.GetActivities(SubscriptionTraceSemantics.Operation, traceId, stream)
 			.Where(activity => Equals(
 				activity.GetTagItem(TelemetryAttributes.MessagingConsumerGroupName),
 				groupName
@@ -53,9 +55,13 @@ public class PersistentSubscriptionsTracingInstrumentationTests(ITestOutputHelpe
 		Assert.True(expectedEventIds.SetEquals(actualEventIds));
 
 		foreach (var subscribeActivity in subscribeActivities) {
-			subscribeActivity.TraceId.ShouldBe(appendActivity.Context.TraceId);
-			subscribeActivity.ParentSpanId.ShouldBe(appendActivity.Context.SpanId);
-			subscribeActivity.HasRemoteParent.ShouldBeTrue();
+			subscribeActivity.TraceId.ShouldBe(subscriber.TraceId);
+			subscribeActivity.ParentSpanId.ShouldBe(subscriber.SpanId);
+			subscribeActivity.HasRemoteParent.ShouldBeFalse();
+			var messageLink = subscribeActivity.Links.ShouldHaveSingleItem().Context;
+			messageLink.TraceId.ShouldBe(appendActivity.TraceId);
+			messageLink.SpanId.ShouldBe(appendActivity.SpanId);
+			messageLink.IsRemote.ShouldBeTrue();
 			subscribeActivity.GetTagItem(TelemetryAttributes.MessagingConsumerGroupName).ShouldBe(groupName);
 
 			Fixture.AssertSubscriptionActivityHasExpectedTags(

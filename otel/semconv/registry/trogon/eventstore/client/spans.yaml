@@ -7,7 +7,7 @@ groups:
       - id: trogon.eventstore.event.type
         type: string
         stability: development
-        brief: Event type processed by the client.
+        brief: Event type received by the client.
         examples: [order-created]
   - id: span.trogon.eventstore.client.database.operation
     type: span
@@ -32,11 +32,14 @@ groups:
         requirement_level:
           conditionally_required: If the server port is available.
 
-  - id: span.trogon.eventstore.client.process
+  - id: span.trogon.eventstore.client.receive
     type: span
     stability: development
-    span_kind: consumer
-    brief: Describes processing an event delivered by a subscription.
+    span_kind: client
+    brief: Describes receiving an event delivered by a subscription.
+    annotations:
+      code_generation:
+        operation_name: receive
     attributes:
       - ref: messaging.system
         requirement_level: required

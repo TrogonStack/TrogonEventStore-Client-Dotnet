@@ -64,7 +64,8 @@ jobs:
         FullyQualifiedName~KurrentDB.Client.Tests.PositionTests.|
         FullyQualifiedName~KurrentDB.Client.Tests.NodePreferenceComparerTests.|
         FullyQualifiedName~KurrentDB.Client.Tests.NodeSelectorTests.|
-        FullyQualifiedName~KurrentDB.Client.Tests.StreamPositionTests.
+        FullyQualifiedName~KurrentDB.Client.Tests.StreamPositionTests.|
+        FullyQualifiedName~KurrentDB.Client.Tests.Compatibility.
     steps:
       - name: Checkout
         uses: actions/checkout@v5

@@ -52,3 +52,16 @@ templates:
       end
     application_mode: single
     file_name: TrogonTelemetryAttributes.g.cs
+  - template: subscription-trace-semantics.cs.j2
+    filter: >
+      if $custom_attributes then
+        {
+          receive: [semconv_grouped_spans[].spans[] | select(
+            .id == "span.trogon.eventstore.client.receive"
+          )][0]
+        }
+      else
+        empty
+      end
+    application_mode: single
+    file_name: SubscriptionTraceSemantics.g.cs

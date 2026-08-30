@@ -9,6 +9,5 @@ static class TracingConstants {
 	public static class Operations {
 		public const string Append = "append";
 		public const string BatchAppend = "batch_append";
-		public const string Process = "process";
 	}
 }

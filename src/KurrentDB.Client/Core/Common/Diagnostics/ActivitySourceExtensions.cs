@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using KurrentDB.Diagnostics;
 using KurrentDB.Diagnostics.Telemetry;
+using KurrentDB.Diagnostics.Tracing;
 using OpenTelemetry;
 using static KurrentDB.Diagnostics.Tracing.TracingConstants;
 
@@ -44,65 +45,103 @@ static class ActivitySourceExtensions {
 		}
 	}
 
-	public static void TraceSubscriptionEvent(
+	public static SubscriptionReceive StartSubscriptionReceive(
 		this ActivitySource source,
-		string? consumerGroupName,
-		ResolvedEvent resolvedEvent,
-		ChannelInfo channelInfo,
-		KurrentDBClientSettings settings
-	) {
-		if (source.HasNoActiveListeners() || resolvedEvent.Event is null)
-			return;
+		string? consumerGroupName
+	) => source.HasNoActiveListeners()
+		? default
+		: new(source, consumerGroupName, Activity.Current?.Context ?? default, DateTimeOffset.UtcNow);
 
-		var propagationContext = resolvedEvent.Event.Metadata.ExtractPropagationContext();
+	public readonly struct SubscriptionReceive {
+		readonly ActivitySource? _source;
+		readonly string? _consumerGroupName;
+		readonly ActivityContext _parentContext;
+		readonly DateTimeOffset _startedAt;
 
-		if (propagationContext.ActivityContext == default)
-			return;
+		internal SubscriptionReceive(
+			ActivitySource source,
+			string? consumerGroupName,
+			ActivityContext parentContext,
+			DateTimeOffset startedAt
+		) {
+			_source = source;
+			_consumerGroupName = consumerGroupName;
+			_parentContext = parentContext;
+			_startedAt = startedAt;
+		}
 
-		var destination = resolvedEvent.OriginalEvent.EventStreamId;
-		var tags = new ActivityTagsCollection()
-			.WithRequiredTag(TelemetryAttributes.MessagingSystem, SystemName)
-			.WithRequiredTag(TelemetryAttributes.MessagingOperationName, Operations.Process)
-			.WithRequiredTag(TelemetryAttributes.MessagingOperationType, Operations.Process)
-			.WithRequiredTag(TelemetryAttributes.MessagingDestinationName, destination)
-			.WithOptionalTag(TelemetryAttributes.MessagingConsumerGroupName, consumerGroupName)
-			.WithRequiredTag(TelemetryAttributes.MessagingMessageId, resolvedEvent.OriginalEvent.EventId.ToString())
-			.WithRequiredTag(TrogonTelemetryAttributes.EventType, resolvedEvent.OriginalEvent.EventType)
-			.WithGrpcChannelServerTags(channelInfo)
-			.WithClientSettingsServerTags(settings);
+		public void Complete(
+			ResolvedEvent resolvedEvent,
+			ChannelInfo channelInfo,
+			KurrentDBClientSettings settings
+		) {
+			if (_source is null)
+				return;
 
-		using var activity = StartActivity(
-			source,
-			$"{Operations.Process} {destination}",
-			ActivityKind.Consumer,
-			tags,
-			propagationContext.ActivityContext
-		);
+			var deliveredEvent = resolvedEvent.Event ?? resolvedEvent.Link;
+			if (deliveredEvent is null)
+				return;
 
-		if (activity is null)
-			return;
+			var propagationContext = deliveredEvent.Metadata.ExtractPropagationContext();
+			var destination = resolvedEvent.OriginalEvent.EventStreamId;
+			var tags = new ActivityTagsCollection()
+				.WithRequiredTag(TelemetryAttributes.MessagingSystem, SystemName)
+				.WithRequiredTag(TelemetryAttributes.MessagingOperationName, SubscriptionTraceSemantics.Operation)
+				.WithRequiredTag(TelemetryAttributes.MessagingOperationType, SubscriptionTraceSemantics.Operation)
+				.WithRequiredTag(TelemetryAttributes.MessagingDestinationName, destination)
+				.WithOptionalTag(TelemetryAttributes.MessagingConsumerGroupName, _consumerGroupName)
+				.WithRequiredTag(TelemetryAttributes.MessagingMessageId, resolvedEvent.OriginalEvent.EventId.ToString())
+				.WithRequiredTag(TrogonTelemetryAttributes.EventType, deliveredEvent.EventType)
+				.WithGrpcChannelServerTags(channelInfo)
+				.WithClientSettingsServerTags(settings);
+			var links = propagationContext.ActivityContext == default
+				? null
+				: new[] { new ActivityLink(propagationContext.ActivityContext) };
 
-		foreach (var (name, value) in propagationContext.Baggage.GetBaggage())
-			activity.AddBaggage(name, value);
+			using var activity = StartActivity(
+				_source,
+				$"{SubscriptionTraceSemantics.Operation} {destination}",
+				SubscriptionTraceSemantics.SpanKind,
+				tags,
+				_parentContext,
+				links,
+				_startedAt
+			);
+
+			if (activity is null)
+				return;
+
+			foreach (var (name, value) in propagationContext.Baggage.GetBaggage())
+				activity.AddBaggage(name, value);
+		}
 	}
 
 	static Activity? StartActivity(
 		this ActivitySource source,
 		string operationName, ActivityKind activityKind, ActivityTagsCollection? tags = null,
-		ActivityContext? parentContext = null
+		ActivityContext? parentContext = null,
+		IEnumerable<ActivityLink>? links = null,
+		DateTimeOffset startTime = default
 	) {
 		if (source.HasNoActiveListeners())
 			return null;
 
-		return source
-			.CreateActivity(
+		var activity = source.CreateActivity(
 				operationName,
 				activityKind,
 				parentContext ?? default,
 				tags,
+				links,
 				idFormat: ActivityIdFormat.W3C
-			)
-			?.Start();
+			);
+
+		if (activity is null)
+			return null;
+
+		if (startTime != default)
+			activity.SetStartTime(startTime.UtcDateTime);
+
+		return activity.Start();
 	}
 
 	static bool HasNoActiveListeners(this ActivitySource source) => !source.HasListeners();
