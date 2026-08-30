@@ -1,0 +1,54 @@
+whitespace_control:
+  trim_blocks: true
+  lstrip_blocks: true
+
+params:
+  custom_attributes: false
+  official_attributes: false
+
+templates:
+  - template: telemetry-attributes.cs.j2
+    filter: >
+      if $official_attributes then
+        semconv_grouped_attributes
+        | map({
+            root_namespace: .root_namespace,
+            attributes: [.attributes[] | select(
+              .name == "db.collection.name" or
+              .name == "db.operation.batch.size" or
+              .name == "db.operation.name" or
+              .name == "db.system.name" or
+              .name == "error.type" or
+              .name == "exception.message" or
+              .name == "exception.stacktrace" or
+              .name == "exception.type" or
+              .name == "messaging.consumer.group.name" or
+              .name == "messaging.destination.name" or
+              .name == "messaging.message.id" or
+              .name == "messaging.operation.name" or
+              .name == "messaging.operation.type" or
+              .name == "messaging.system" or
+              .name == "server.address" or
+              .name == "server.port"
+            )]
+          })
+        | map(select(.attributes | length > 0))
+      else
+        empty
+      end
+    application_mode: single
+    file_name: TelemetryAttributes.g.cs
+  - template: trogon-telemetry-attributes.cs.j2
+    filter: >
+      if $custom_attributes then
+        semconv_grouped_attributes
+        | map({
+            root_namespace: .root_namespace,
+            attributes: [.attributes[] | select(.name | startswith("trogon.eventstore."))]
+          })
+        | map(select(.attributes | length > 0))
+      else
+        empty
+      end
+    application_mode: single
+    file_name: TrogonTelemetryAttributes.g.cs

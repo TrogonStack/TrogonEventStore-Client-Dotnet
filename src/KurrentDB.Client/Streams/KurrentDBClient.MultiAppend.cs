@@ -43,16 +43,20 @@ public partial class KurrentDBClient {
 
 		var tags = new ActivityTagsCollection()
 			.WithGrpcChannelServerTags(channelInfo)
-			.WithClientSettingsServerTags(Settings)
-			.WithOptionalTag(TelemetryTags.Database.User, Settings.DefaultCredentials?.Username);
+			.WithClientSettingsServerTags(Settings);
 
-		return await KurrentDBClientDiagnostics.ActivitySource.TraceClientOperation(Operation, Operations.MultiAppend, tags).ConfigureAwait(false);
+		return await KurrentDBClientDiagnostics.ActivitySource.TraceClientOperation(Operation, Operations.BatchAppend, tags).ConfigureAwait(false);
 
-		async ValueTask<MultiStreamAppendResponse> Operation() {
+		async ValueTask<MultiStreamAppendResponse> Operation(Activity? activity) {
+			activity?.SetTag(TelemetryAttributes.DbOperationBatchSize, 0);
+
 			try {
 				using var session = client.AppendSession(KurrentDBCallOptions.CreateStreaming(Settings, cancellationToken: cancellationToken));
+				var batchSize = 0;
 
 				await foreach (var request in requests.WithCancellation(cancellationToken)) {
+					batchSize++;
+					activity?.SetTag(TelemetryAttributes.DbOperationBatchSize, batchSize);
 					var records = await request.Messages
 						.Map()
 						.ToArrayAsync(cancellationToken)

@@ -1,0 +1,60 @@
+groups:
+  - id: registry.trogon.eventstore.client.attributes
+    type: attribute_group
+    stability: development
+    brief: Attributes used by TrogonEventStore client spans.
+    attributes:
+      - id: trogon.eventstore.event.type
+        type: string
+        stability: development
+        brief: Event type processed by the client.
+        examples: [order-created]
+  - id: span.trogon.eventstore.client.database.operation
+    type: span
+    stability: development
+    span_kind: client
+    brief: Describes a database operation performed by the client.
+    attributes:
+      - ref: db.system.name
+        requirement_level: required
+      - ref: db.operation.name
+        requirement_level: required
+      - ref: db.collection.name
+        requirement_level: recommended
+      - ref: db.operation.batch.size
+        requirement_level: recommended
+      - ref: error.type
+        requirement_level:
+          conditionally_required: If the operation failed.
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level:
+          conditionally_required: If the server port is available.
+
+  - id: span.trogon.eventstore.client.process
+    type: span
+    stability: development
+    span_kind: consumer
+    brief: Describes processing an event delivered by a subscription.
+    attributes:
+      - ref: messaging.system
+        requirement_level: required
+      - ref: messaging.operation.name
+        requirement_level: required
+      - ref: messaging.operation.type
+        requirement_level: required
+      - ref: messaging.destination.name
+        requirement_level: required
+      - ref: messaging.message.id
+        requirement_level: recommended
+      - ref: messaging.consumer.group.name
+        requirement_level:
+          conditionally_required: If the event was delivered by a persistent subscription.
+      - ref: trogon.eventstore.event.type
+        requirement_level: recommended
+      - ref: server.address
+        requirement_level: recommended
+      - ref: server.port
+        requirement_level:
+          conditionally_required: If the server port is available.

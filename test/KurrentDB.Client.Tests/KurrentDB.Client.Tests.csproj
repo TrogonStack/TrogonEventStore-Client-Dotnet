@@ -7,6 +7,8 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Grpc.AspNetCore" Version="2.67.0"/>
+        <PackageReference Include="OpenTelemetry" Version="1.15.3" />
+        <PackageReference Include="OpenTelemetry.Exporter.InMemory" Version="1.15.3" />
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Grpc.Tools" Version="2.68.1">

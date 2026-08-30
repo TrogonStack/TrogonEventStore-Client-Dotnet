@@ -4,21 +4,38 @@
 using System.Diagnostics;
 using KurrentDB.Diagnostics;
 using KurrentDB.Diagnostics.Telemetry;
+using OpenTelemetry;
 using static KurrentDB.Diagnostics.Tracing.TracingConstants;
 
 namespace KurrentDB.Client.Diagnostics;
 
 static class ActivitySourceExtensions {
-	public static async ValueTask<T> TraceClientOperation<T>(
+	public static ValueTask<T> TraceClientOperation<T>(
 		this ActivitySource source,
 		Func<ValueTask<T>> tracedOperation,
 		string operationName,
 		ActivityTagsCollection? tags = null
+	) => source.TraceClientOperation(_ => tracedOperation(), operationName, tags);
+
+	public static async ValueTask<T> TraceClientOperation<T>(
+		this ActivitySource source,
+		Func<Activity?, ValueTask<T>> tracedOperation,
+		string operationName,
+		ActivityTagsCollection? tags = null
 	) {
-		using var activity = StartActivity(source, operationName, ActivityKind.Client, tags, Activity.Current?.Context);
+		if (source.HasNoActiveListeners())
+			return await tracedOperation(null).ConfigureAwait(false);
+
+		(tags ??= new ActivityTagsCollection())
+			.WithRequiredTag(TelemetryAttributes.DbSystemName, SystemName)
+			.WithRequiredTag(TelemetryAttributes.DbOperationName, operationName);
+
+		var target = tags.FirstOrDefault(tag => tag.Key == TelemetryAttributes.DbCollectionName).Value as string;
+		var spanName = target is null ? operationName : $"{operationName} {target}";
+		using var activity = StartActivity(source, spanName, ActivityKind.Client, tags, Activity.Current?.Context);
 
 		try {
-			var res = await tracedOperation().ConfigureAwait(false);
+			var res = await tracedOperation(activity).ConfigureAwait(false);
 			activity?.StatusOk();
 			return res;
 		} catch (Exception ex) {
@@ -29,34 +46,44 @@ static class ActivitySourceExtensions {
 
 	public static void TraceSubscriptionEvent(
 		this ActivitySource source,
-		string? subscriptionId,
+		string? consumerGroupName,
 		ResolvedEvent resolvedEvent,
 		ChannelInfo channelInfo,
-		KurrentDBClientSettings settings,
-		UserCredentials? userCredentials
+		KurrentDBClientSettings settings
 	) {
 		if (source.HasNoActiveListeners() || resolvedEvent.Event is null)
 			return;
 
-		var parentContext = resolvedEvent.Event.Metadata.ExtractPropagationContext();
+		var propagationContext = resolvedEvent.Event.Metadata.ExtractPropagationContext();
 
-		if (parentContext == default(ActivityContext)) return;
+		if (propagationContext.ActivityContext == default)
+			return;
 
+		var destination = resolvedEvent.OriginalEvent.EventStreamId;
 		var tags = new ActivityTagsCollection()
-			.WithRequiredTag(TelemetryTags.KurrentDB.Stream, resolvedEvent.OriginalEvent.EventStreamId)
-			.WithOptionalTag(TelemetryTags.KurrentDB.SubscriptionId, subscriptionId)
-			.WithRequiredTag(TelemetryTags.KurrentDB.EventId, resolvedEvent.OriginalEvent.EventId.ToString())
-			.WithRequiredTag(TelemetryTags.KurrentDB.EventType, resolvedEvent.OriginalEvent.EventType)
-			// Ensure consistent server.address attribute when connecting to cluster via dns discovery
+			.WithRequiredTag(TelemetryAttributes.MessagingSystem, SystemName)
+			.WithRequiredTag(TelemetryAttributes.MessagingOperationName, Operations.Process)
+			.WithRequiredTag(TelemetryAttributes.MessagingOperationType, Operations.Process)
+			.WithRequiredTag(TelemetryAttributes.MessagingDestinationName, destination)
+			.WithOptionalTag(TelemetryAttributes.MessagingConsumerGroupName, consumerGroupName)
+			.WithRequiredTag(TelemetryAttributes.MessagingMessageId, resolvedEvent.OriginalEvent.EventId.ToString())
+			.WithRequiredTag(TrogonTelemetryAttributes.EventType, resolvedEvent.OriginalEvent.EventType)
 			.WithGrpcChannelServerTags(channelInfo)
-			.WithClientSettingsServerTags(settings)
-			.WithOptionalTag(
-				TelemetryTags.Database.User,
-				userCredentials?.Username ?? settings.DefaultCredentials?.Username
-			);
+			.WithClientSettingsServerTags(settings);
 
-		StartActivity(source, Operations.Subscribe, ActivityKind.Consumer, tags, parentContext)
-			?.Dispose();
+		using var activity = StartActivity(
+			source,
+			$"{Operations.Process} {destination}",
+			ActivityKind.Consumer,
+			tags,
+			propagationContext.ActivityContext
+		);
+
+		if (activity is null)
+			return;
+
+		foreach (var (name, value) in propagationContext.Baggage.GetBaggage())
+			activity.AddBaggage(name, value);
 	}
 
 	static Activity? StartActivity(
@@ -66,10 +93,6 @@ static class ActivitySourceExtensions {
 	) {
 		if (source.HasNoActiveListeners())
 			return null;
-
-		(tags ??= new ActivityTagsCollection())
-			.WithRequiredTag(TelemetryTags.Database.System, KurrentDBClientDiagnostics.InstrumentationName)
-			.WithRequiredTag(TelemetryTags.Database.Operation, operationName);
 
 		return source
 			.CreateActivity(

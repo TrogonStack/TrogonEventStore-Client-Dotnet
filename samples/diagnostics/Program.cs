@@ -11,7 +11,7 @@ using OpenTelemetry.Resources;
 /**
 # region import-required-packages
 // required
-dotnet add package EventStore.Client.Extensions.OpenTelemetry
+dotnet add package TrogonEventStore.Client
 
 // recommended
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol

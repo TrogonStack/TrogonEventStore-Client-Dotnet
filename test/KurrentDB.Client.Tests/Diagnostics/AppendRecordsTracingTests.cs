@@ -3,8 +3,8 @@
 using System.Diagnostics;
 using KurrentDB.Client.Diagnostics;
 using KurrentDB.Client.Tests.Fixtures;
-using KurrentDB.Diagnostics.Telemetry;
 using KurrentDB.Diagnostics;
+using KurrentDB.Diagnostics.Telemetry;
 using KurrentDB.Diagnostics.Tracing;
 using static KurrentDB.Diagnostics.Tracing.TracingConstants;
 
@@ -12,6 +12,7 @@ namespace KurrentDB.Client.Tests.Diagnostics;
 
 [Trait("Category", "Target:Diagnostics")]
 [Trait("Category", "Operation:AppendRecords")]
+[Collection(DiagnosticsCollection.Name)]
 public class AppendRecordsTracingTests(ITestOutputHelper output, DiagnosticsFixture fixture) : KurrentDBPermanentTests<DiagnosticsFixture>(output, fixture) {
 	[MinimumVersion.Fact(26, 1)]
 	public async Task append_records_creates_trace_activity() {
@@ -27,7 +28,7 @@ public class AppendRecordsTracingTests(ITestOutputHelper output, DiagnosticsFixt
 		// Assert
 		result.Position.ShouldBePositive();
 
-		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.MultiAppend, traceId);
+		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.BatchAppend, traceId);
 
 		appendActivities.ShouldNotBeEmpty();
 		appendActivities.Count.ShouldBe(1);
@@ -35,14 +36,14 @@ public class AppendRecordsTracingTests(ITestOutputHelper output, DiagnosticsFixt
 		var activity = appendActivities.First();
 
 		var expectedTags = new Dictionary<string, string?> {
-			{ TelemetryTags.Database.System, KurrentDBClientDiagnostics.InstrumentationName },
-			{ TelemetryTags.Database.Operation, TracingConstants.Operations.MultiAppend },
-			{ TelemetryTags.Database.User, TestCredentials.Root.Username },
-			{ TelemetryTags.Otel.StatusCode, ActivityStatusCodeHelper.OkStatusCodeTagValue }
+			{ TelemetryAttributes.DbSystemName, TracingConstants.SystemName },
+			{ TelemetryAttributes.DbOperationName, TracingConstants.Operations.BatchAppend }
 		};
 
 		foreach (var tag in expectedTags)
 			activity.Tags.ShouldContain(tag);
+
+		activity.GetTagItem(TelemetryAttributes.DbOperationBatchSize).ShouldBe(3);
 	}
 
 	[MinimumVersion.Fact(26, 1)]
@@ -61,7 +62,7 @@ public class AppendRecordsTracingTests(ITestOutputHelper output, DiagnosticsFixt
 		var rex = await appendTask.ShouldThrowAsync<AppendConsistencyViolationException>();
 
 		// Assert
-		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.MultiAppend, traceId);
+		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.BatchAppend, traceId);
 
 		appendActivities.ShouldNotBeEmpty();
 		appendActivities.Count.ShouldBe(1);
@@ -71,9 +72,9 @@ public class AppendRecordsTracingTests(ITestOutputHelper output, DiagnosticsFixt
 		activity.Events.ShouldHaveSingleItem();
 
 		var activityEvent = activity.Events.First();
-		activityEvent.Name.ShouldBe(TelemetryTags.Exception.EventName);
-		activityEvent.Tags.Any(tag => tag.Key == TelemetryTags.Exception.Message).ShouldBeTrue();
-		activityEvent.Tags.Any(tag => tag.Key == TelemetryTags.Exception.Stacktrace).ShouldBeTrue();
-		activityEvent.Tags.Any(tag => tag.Key == TelemetryTags.Exception.Type && (string?)tag.Value == rex.GetType().FullName).ShouldBeTrue();
+		activityEvent.Name.ShouldBe(TracingConstants.ExceptionEventName);
+		activityEvent.Tags.Any(tag => tag.Key == TelemetryAttributes.ExceptionMessage).ShouldBeTrue();
+		activityEvent.Tags.Any(tag => tag.Key == TelemetryAttributes.ExceptionStacktrace).ShouldBeTrue();
+		activityEvent.Tags.Any(tag => tag.Key == TelemetryAttributes.ExceptionType && (string?)tag.Value == rex.GetType().FullName).ShouldBeTrue();
 	}
 }

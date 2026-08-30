@@ -3,7 +3,6 @@
 using System.Net.Http;
 using KurrentDB.Client.Tests.FluentDocker;
 using Serilog;
-using static System.TimeSpan;
 
 namespace KurrentDB.Client.Tests;
 
@@ -11,6 +10,7 @@ namespace KurrentDB.Client.Tests;
 public partial class KurrentDBPermanentFixture : IAsyncLifetime, IAsyncDisposable {
 	static readonly ILogger       Logger;
 	static readonly SemaphoreSlim WarmUpGatekeeper = new(1, 1);
+	static KurrentDBPermanentTestNode? SharedService;
 
 	static KurrentDBPermanentFixture() {
 		Logging.Initialize();
@@ -24,14 +24,13 @@ public partial class KurrentDBPermanentFixture : IAsyncLifetime, IAsyncDisposabl
 
 	protected KurrentDBPermanentFixture(ConfigureFixture configure) {
 		Options = configure(KurrentDBPermanentTestNode.DefaultOptions());
-		Service = new KurrentDBPermanentTestNode(Options);
 	}
 
 	List<Guid> TestRuns { get; } = new();
 
 	public ILogger Log => Logger;
 
-	public KurrentDBPermanentTestNode Service { get; }
+	public KurrentDBPermanentTestNode Service { get; private set; } = null!;
 	public KurrentDBFixtureOptions    Options { get; }
 	public Faker                      Faker   { get; } = new();
 
@@ -73,7 +72,13 @@ public partial class KurrentDBPermanentFixture : IAsyncLifetime, IAsyncDisposabl
 		await WarmUpGatekeeper.WaitAsync();
 
 		try {
-			await Service.Start();
+			if (SharedService is null) {
+				var service = new KurrentDBPermanentTestNode(Options);
+				await service.Start();
+				SharedService = service;
+			}
+
+			Service               = SharedService;
 			DatabaseVersion       = TestContainerService.Version;
 			HasLastStreamPosition = (DatabaseVersion?.Major ?? int.MaxValue) >= 21;
 
@@ -120,8 +125,6 @@ public partial class KurrentDBPermanentFixture : IAsyncLifetime, IAsyncDisposabl
 		} catch {
 			// ignored
 		}
-
-		await Service.DisposeAsync().AsTask().WithTimeout(FromMinutes(5));
 
 		foreach (var testRunId in TestRuns)
 			Logging.ReleaseLogs(testRunId);
