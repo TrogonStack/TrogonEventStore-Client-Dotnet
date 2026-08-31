@@ -125,13 +125,13 @@ public class OpenTelemetryIntegrationTests {
 			extracted.ActivityContext.SpanId.ShouldBe(activity.SpanId);
 			extracted.ActivityContext.TraceFlags.ShouldBe(ActivityTraceFlags.None);
 			extracted.ActivityContext.TraceState.ShouldBe("vendor=value");
-			extracted.Baggage.GetBaggage("tenant").ShouldBe("straw-hat");
+			extracted.Baggage.GetBaggage("tenant").ShouldBeNull();
 
 			using var document = JsonDocument.Parse(injected);
 			document.RootElement.GetProperty("custom").GetString().ShouldBe("value");
 			document.RootElement.TryGetProperty("traceparent", out _).ShouldBeTrue();
 			document.RootElement.TryGetProperty("tracestate", out _).ShouldBeTrue();
-			document.RootElement.TryGetProperty("baggage", out _).ShouldBeTrue();
+			document.RootElement.TryGetProperty("baggage", out _).ShouldBeFalse();
 		} finally {
 			Baggage.Current = originalBaggage;
 			Sdk.SetDefaultTextMapPropagator(originalPropagator);
@@ -157,7 +157,7 @@ public class OpenTelemetryIntegrationTests {
 			extracted.ActivityContext.SpanId.ShouldBe(activity.SpanId);
 			extracted.ActivityContext.TraceFlags.ShouldBe(ActivityTraceFlags.Recorded);
 			extracted.ActivityContext.TraceState.ShouldBe("vendor=value");
-			extracted.Baggage.GetBaggage("tenant").ShouldBe("straw-hat");
+			extracted.Baggage.GetBaggage("tenant").ShouldBeNull();
 			metadata["custom"].ShouldBe("value");
 		} finally {
 			Baggage.Current = originalBaggage;
@@ -183,14 +183,15 @@ public class OpenTelemetryIntegrationTests {
 
 			metadata.InjectTracingContext(activity);
 
-			foreach (var name in new[] { "traceparent", "tracestate", "baggage" })
+			foreach (var name in new[] { "traceparent", "tracestate" })
 				metadata.Keys.Count(key => string.Equals(key, name, StringComparison.OrdinalIgnoreCase)).ShouldBe(1);
+			metadata["Baggage"].ShouldBe("stale");
 
 			var extracted = TestPropagator.Extract(default, metadata, Getter);
 			extracted.ActivityContext.TraceId.ShouldBe(activity.TraceId);
 			extracted.ActivityContext.SpanId.ShouldBe(activity.SpanId);
 			extracted.ActivityContext.TraceState.ShouldBe("vendor=value");
-			extracted.Baggage.GetBaggage("tenant").ShouldBe("straw-hat");
+			extracted.Baggage.GetBaggage("tenant").ShouldBeNull();
 		} finally {
 			Baggage.Current = originalBaggage;
 			Sdk.SetDefaultTextMapPropagator(originalPropagator);

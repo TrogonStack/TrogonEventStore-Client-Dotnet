@@ -1,6 +1,7 @@
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using KurrentDB.Client.Diagnostics;
 using Grpc.Core;
+using KurrentDB.Client.Diagnostics;
 using KurrentDB.Protocol.Streams.V1;
 using static KurrentDB.Protocol.Streams.V1.ReadResp.ContentOneofCase;
 using static KurrentDB.Protocol.Streams.V1.Streams;
@@ -135,6 +136,7 @@ namespace KurrentDB.Client {
 			private readonly CallOptions                         _callOptions;
 			private readonly KurrentDBClientSettings            _settings;
 			private          AsyncServerStreamingCall<ReadResp>? _call;
+			private          ChannelInfo?                       _channelInfo;
 
 			private int _messagesEnumerated;
 
@@ -155,7 +157,7 @@ namespace KurrentDB.Client {
 
 					async IAsyncEnumerable<StreamMessage> GetMessages() {
 						try {
-							await foreach (var message in _channel.Reader.ReadAllAsync(_cts.Token)) {
+							await foreach (var message in ReadMessages(_cts.Token)) {
 								if (message is StreamMessage.SubscriptionConfirmation(var subscriptionId))
                                     SubscriptionId = subscriptionId;
 
@@ -198,6 +200,7 @@ namespace KurrentDB.Client {
 				async Task PumpMessages() {
 					try {
 						var channelInfo = await selectChannelInfo(_cts.Token).ConfigureAwait(false);
+						_channelInfo = channelInfo;
 						var client      = new StreamsClient(channelInfo.CallInvoker);
 						_call = client.Read(_request, _callOptions);
                         await foreach (var response in _call.ResponseStream.ReadAllAsync(_cts.Token).ConfigureAwait(false)) {
@@ -239,14 +242,6 @@ namespace KurrentDB.Client {
 									),
                                     _          => StreamMessage.Unknown.Instance
                                 };
-
-                            if (subscriptionMessage is StreamMessage.Event evt)
-                                KurrentDBClientDiagnostics.ActivitySource.TraceSubscriptionEvent(
-                                    null,
-                                    evt.ResolvedEvent,
-                                    channelInfo,
-                                    _settings
-                                );
 
                             await _channel.Writer
                                 .WriteAsync(subscriptionMessage, _cts.Token)
@@ -293,7 +288,7 @@ namespace KurrentDB.Client {
 			/// <inheritdoc />
 			public async IAsyncEnumerator<ResolvedEvent> GetAsyncEnumerator(CancellationToken cancellationToken = default) {
 				try {
-					await foreach (var message in _channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false)) {
+					await foreach (var message in ReadMessages(cancellationToken).ConfigureAwait(false)) {
 						if (message is not StreamMessage.Event e)
                             continue;
 
@@ -302,6 +297,26 @@ namespace KurrentDB.Client {
 				}
 				finally {
                     await _cts.CancelAsync().ConfigureAwait(false);
+				}
+			}
+
+			async IAsyncEnumerable<StreamMessage> ReadMessages(
+				[EnumeratorCancellation] CancellationToken cancellationToken
+			) {
+				await using var messages = _channel.Reader
+					.ReadAllAsync(cancellationToken)
+					.GetAsyncEnumerator(cancellationToken);
+
+				while (true) {
+					var receive = KurrentDBClientDiagnostics.ActivitySource.StartSubscriptionReceive(null);
+					if (!await messages.MoveNextAsync().ConfigureAwait(false))
+						yield break;
+
+					var message = messages.Current;
+					if (message is StreamMessage.Event(var resolvedEvent))
+						receive.Complete(resolvedEvent, _channelInfo!, _settings);
+
+					yield return message;
 				}
 			}
 		}

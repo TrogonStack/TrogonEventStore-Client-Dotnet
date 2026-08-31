@@ -1,13 +1,12 @@
 // ReSharper disable AccessToDisposedClosure
 
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using KurrentDB.Client.Diagnostics;
 using KurrentDB.Client.Tests.Fixtures;
 using KurrentDB.Diagnostics.Telemetry;
 using KurrentDB.Diagnostics.Tracing;
-using OpenTelemetry;
-using OpenTelemetry.Context.Propagation;
 
 namespace KurrentDB.Client.Tests.Diagnostics;
 
@@ -46,6 +45,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 	public async Task multi_stream_append() {
 		// Arrange
 		var traceId = Fixture.CreateTraceId();
+		var subscriber = Activity.Current!;
 
 		var seedEvents = Fixture.CreateTestEvents(10).ToList();
 
@@ -72,7 +72,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		appendResult.Position.ShouldBePositive();
 
 		var appendActivities = Fixture.GetActivities(TracingConstants.Operations.BatchAppend, traceId);
-		var subscribeActivities = Fixture.GetActivities(TracingConstants.Operations.Process, traceId);
+		var subscribeActivities = Fixture.GetActivities(SubscriptionTraceSemantics.Operation, traceId);
 
 		appendActivities.ShouldNotBeEmpty();
 		subscribeActivities.ShouldNotBeEmpty();
@@ -83,14 +83,15 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		// They also have the same duration
 		appendActivities.Select(x => x.Duration).Distinct().Count().ShouldBe(1);
 
-		// Check that subscribe activities have the correct parent IDs inherited from append activities
-		subscribeActivities
-			.FirstOrDefault(x => x.ParentId == appendActivities.First().Id)?.ParentSpanId
-			.ShouldBe(appendActivities.First().SpanId);
-
-		subscribeActivities
-			.FirstOrDefault(x => x.ParentId == appendActivities.Last().Id)?.ParentSpanId
-			.ShouldBe(appendActivities.Last().SpanId);
+		Assert.All(
+			subscribeActivities,
+			receiveActivity => {
+				receiveActivity.ParentSpanId.ShouldBe(subscriber.SpanId);
+				var messageLink = receiveActivity.Links.ShouldHaveSingleItem().Context;
+				messageLink.TraceId.ShouldBe(appendActivities[0].TraceId);
+				messageLink.SpanId.ShouldBe(appendActivities[0].SpanId);
+			}
+		);
 
 		subscribeActivities
 			.All(x => x.StartTimeUtc > appendActivities.First().StartTimeUtc)
@@ -197,51 +198,45 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 	}
 
 	[Fact]
-	public async Task subscription_restores_tracestate_and_baggage() {
-		var traceId = Fixture.CreateTraceId();
-		Activity.Current!.TraceStateString = "vendor=value";
-		var originalBaggage = Baggage.Current;
-		var originalPropagator = Propagators.DefaultTextMapPropagator;
+	public async Task subscription_receive_uses_ambient_parent_and_links_message_creation_context() {
+		var producerTraceId = Fixture.CreateTraceId();
+		Activity.Current!.TraceStateString = "vendor=producer";
 		var stream = Fixture.GetStreamName();
-		var seedEvent = Fixture.CreateTestEvent(metadata: Fixture.CreateTestJsonMetadata());
+		var metadata = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string> {
+			["baggage"] = "tenant=straw-hat"
+		});
+		var seedEvent = Fixture.CreateTestEvent(metadata: metadata);
 
-		try {
-			Sdk.SetDefaultTextMapPropagator(new CompositeTextMapPropagator([
-				new TraceContextPropagator(),
-				new BaggagePropagator()
-			]));
-			Baggage.Current = Baggage.Create(new Dictionary<string, string> { ["tenant"] = "straw-hat" });
-			await Fixture.Streams.AppendToStreamAsync(stream, StreamState.NoStream, [seedEvent]);
+		await Fixture.Streams.AppendToStreamAsync(stream, StreamState.NoStream, [seedEvent]);
+		var appendActivity = Fixture
+			.GetActivities(TracingConstants.Operations.Append, producerTraceId)
+			.ShouldHaveSingleItem();
 
-			await using var subscription = Fixture.Streams.SubscribeToStream(stream, FromStream.Start);
-			await using var enumerator = subscription.Messages.GetAsyncEnumerator();
+		Activity.Current = null;
+		using var subscriber = new Activity("subscriber").SetIdFormat(ActivityIdFormat.W3C).Start();
+		subscriber.TraceStateString = "vendor=consumer";
 
-			Assert.True(await enumerator.MoveNextAsync());
-			Assert.IsType<StreamMessage.SubscriptionConfirmation>(enumerator.Current);
-			Assert.True(await enumerator.MoveNextAsync());
-			Assert.IsType<StreamMessage.Event>(enumerator.Current);
+		await using var subscription = Fixture.Streams.SubscribeToStream(stream, FromStream.Start);
+		await using var enumerator = subscription.Messages.GetAsyncEnumerator();
 
-			var appendActivity = Fixture
-				.GetActivities(TracingConstants.Operations.Append, traceId)
-				.ShouldHaveSingleItem();
-			var subscriptionActivities = Fixture
-				.GetActivities(TracingConstants.Operations.Process, traceId, stream)
-				.Where(activity => Equals(activity.GetTagItem(TelemetryAttributes.MessagingMessageId), seedEvent.EventId.ToString()))
-				.ToArray();
+		Assert.True(await enumerator.MoveNextAsync());
+		Assert.IsType<StreamMessage.SubscriptionConfirmation>(enumerator.Current);
+		Assert.True(await enumerator.MoveNextAsync());
+		Assert.IsType<StreamMessage.Event>(enumerator.Current);
 
-			Assert.NotEmpty(subscriptionActivities);
-			Assert.All(
-				subscriptionActivities,
-				subscriptionActivity => {
-					subscriptionActivity.ParentSpanId.ShouldBe(appendActivity.SpanId);
-					subscriptionActivity.TraceStateString.ShouldBe("vendor=value");
-					subscriptionActivity.Baggage.ShouldContain(new KeyValuePair<string, string?>("tenant", "straw-hat"));
-				}
-			);
-		} finally {
-			Baggage.Current = originalBaggage;
-			Sdk.SetDefaultTextMapPropagator(originalPropagator);
-		}
+		var receiveActivity = Fixture
+			.GetActivities(SubscriptionTraceSemantics.Operation, subscriber.TraceId, stream)
+			.ShouldHaveSingleItem();
+
+		receiveActivity.Kind.ShouldBe(ActivityKind.Client);
+		receiveActivity.ParentSpanId.ShouldBe(subscriber.SpanId);
+		receiveActivity.TraceStateString.ShouldBe("vendor=consumer");
+		receiveActivity.Baggage.ShouldContain(new KeyValuePair<string, string?>("tenant", "straw-hat"));
+		var messageLink = receiveActivity.Links.ShouldHaveSingleItem().Context;
+		messageLink.TraceId.ShouldBe(appendActivity.TraceId);
+		messageLink.SpanId.ShouldBe(appendActivity.SpanId);
+		messageLink.TraceState.ShouldBe("vendor=producer");
+		messageLink.IsRemote.ShouldBeTrue();
 	}
 
 	[Fact]
@@ -326,7 +321,7 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 	}
 
 	[Fact]
-	public async Task json_metadata_traced_non_json_metadata_not_traced() {
+	public async Task subscription_receive_is_emitted_without_propagated_context() {
 		var traceId = Fixture.CreateTraceId();
 		var streamName = Fixture.GetStreamName();
 
@@ -353,23 +348,20 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 		await Subscribe(enumerator).WithTimeout();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Process, traceId, streamName)
+			.GetActivities(SubscriptionTraceSemantics.Operation, traceId, streamName)
 			.ToArray();
 
 		appendActivities.ShouldHaveSingleItem();
-		var jsonMetadataEvent = seedEvents.First();
-
-		Assert.NotEmpty(subscribeActivities);
-		Assert.All(
-			subscribeActivities,
-			activity => {
-				Assert.Equal(appendActivities.First().Id, activity.ParentId);
-				Fixture.AssertSubscriptionActivityHasExpectedTags(
-					activity,
-					streamName,
-					jsonMetadataEvent.EventId.ToString()
-				);
-			}
+		subscribeActivities.Length.ShouldBe(seedEvents.Length);
+		var receiveWithoutMessageContext = subscribeActivities.Single(activity => Equals(
+			activity.GetTagItem(TelemetryAttributes.MessagingMessageId),
+			seedEvents.Last().EventId.ToString()
+		));
+		receiveWithoutMessageContext.Links.ShouldBeEmpty();
+		Fixture.AssertSubscriptionActivityHasExpectedTags(
+			receiveWithoutMessageContext,
+			streamName,
+			seedEvents.Last().EventId.ToString()
 		);
 
 		return;
@@ -389,13 +381,69 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 
 	[RetryFact]
 	[Trait("Category", "Special cases")]
-	public async Task no_trace_when_event_is_null() {
+	public async Task unresolved_link_receive_falls_back_to_original_link_semantics() {
+		var traceId = Fixture.CreateTraceId();
+		var targetStream = Fixture.GetStreamName();
+		var linkStream = Fixture.GetStreamName();
+
+		await Fixture.Streams.AppendToStreamAsync(
+			targetStream,
+			StreamState.NoStream,
+			Fixture.CreateTestEvents(1)
+		);
+		var linkEvent = new EventData(
+			Uuid.NewUuid(),
+			SystemEventTypes.LinkTo,
+			Encoding.UTF8.GetBytes($"0@{targetStream}"),
+			Fixture.CreateTestJsonMetadata(),
+			Constants.Metadata.ContentTypes.ApplicationOctetStream
+		);
+		await Fixture.Streams.AppendToStreamAsync(linkStream, StreamState.NoStream, [linkEvent]);
+		var linkAppendActivity = Fixture
+			.GetActivities(TracingConstants.Operations.Append, traceId, linkStream)
+			.ShouldHaveSingleItem();
+		await Fixture.Streams.DeleteAsync(targetStream, StreamState.StreamExists);
+
+		await using var subscription = Fixture.Streams.SubscribeToStream(
+			linkStream,
+			FromStream.Start,
+			resolveLinkTos: true
+		);
+		await using var enumerator = subscription.Messages.GetAsyncEnumerator();
+
+		Assert.True(await enumerator.MoveNextAsync());
+		Assert.IsType<StreamMessage.SubscriptionConfirmation>(enumerator.Current);
+		Assert.True(await enumerator.MoveNextAsync());
+		var unresolvedLink = Assert.IsType<StreamMessage.Event>(enumerator.Current).ResolvedEvent;
+
+		unresolvedLink.Event.ShouldBeNull();
+		unresolvedLink.Link.ShouldNotBeNull();
+		unresolvedLink.OriginalEvent.EventType.ShouldBe(SystemEventTypes.LinkTo);
+
+		var receiveActivity = Fixture
+			.GetActivities(SubscriptionTraceSemantics.Operation, traceId, linkStream)
+			.ShouldHaveSingleItem();
+		receiveActivity.GetTagItem(TelemetryAttributes.MessagingDestinationName)
+			.ShouldBe(unresolvedLink.OriginalEvent.EventStreamId);
+		receiveActivity.GetTagItem(TelemetryAttributes.MessagingMessageId)
+			.ShouldBe(unresolvedLink.OriginalEvent.EventId.ToString());
+		receiveActivity.GetTagItem(TrogonTelemetryAttributes.EventType)
+			.ShouldBe(unresolvedLink.OriginalEvent.EventType);
+		var messageLink = receiveActivity.Links.ShouldHaveSingleItem().Context;
+		messageLink.TraceId.ShouldBe(linkAppendActivity.TraceId);
+		messageLink.SpanId.ShouldBe(linkAppendActivity.SpanId);
+	}
+
+	[RetryFact]
+	[Trait("Category", "Special cases")]
+	public async Task resolved_link_receive_uses_target_event_type_and_original_link_identity() {
 		var traceId = Fixture.CreateTraceId();
 		var category = Guid.NewGuid().ToString("N");
 		var streamName = category + "-123";
 		var categoryStream = "$ce-" + category;
 
 		var seedEvents = Fixture.CreateTestEvents(type: $"{category}-{Fixture.GetStreamName()}").ToArray();
+		ResolvedEvent? receivedEvent = null;
 		await Fixture.Streams.AppendToStreamAsync(streamName, StreamState.NoStream, seedEvents);
 
 		await Fixture.Streams.DeleteAsync(streamName, StreamState.StreamExists);
@@ -415,11 +463,26 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 			.ShouldNotBeNull();
 
 		var subscribeActivities = Fixture
-			.GetActivities(TracingConstants.Operations.Process, traceId, categoryStream)
+			.GetActivities(SubscriptionTraceSemantics.Operation, traceId, categoryStream)
 			.ToArray();
 
 		appendActivities.ShouldHaveSingleItem();
-		subscribeActivities.ShouldBeEmpty();
+		var resolvedLink = receivedEvent!.Value;
+		var receiveActivity = subscribeActivities.Single(activity => Equals(
+			activity.GetTagItem(TelemetryAttributes.MessagingMessageId),
+			resolvedLink.OriginalEvent.EventId.ToString()
+		));
+		resolvedLink.IsResolved.ShouldBeTrue();
+		resolvedLink.OriginalEvent.EventType.ShouldBe("$>");
+		resolvedLink.Event.EventType.ShouldBe("$metadata");
+		receiveActivity.Links.ShouldBeEmpty();
+		receiveActivity.Kind.ShouldBe(SubscriptionTraceSemantics.SpanKind);
+		receiveActivity.GetTagItem(TelemetryAttributes.MessagingDestinationName)
+			.ShouldBe(resolvedLink.OriginalEvent.EventStreamId);
+		receiveActivity.GetTagItem(TelemetryAttributes.MessagingMessageId)
+			.ShouldBe(resolvedLink.OriginalEvent.EventId.ToString());
+		receiveActivity.GetTagItem(TrogonTelemetryAttributes.EventType)
+			.ShouldBe(resolvedLink.Event.EventType);
 
 		return;
 
@@ -428,8 +491,10 @@ public class StreamsTracingInstrumentationTests(ITestOutputHelper output, Diagno
 				if (enumerator.Current is not StreamMessage.Event(var resolvedEvent))
 					continue;
 
-				if (resolvedEvent.Event?.EventType is "$metadata")
+				if (resolvedEvent.Event?.EventType is "$metadata") {
+					receivedEvent = resolvedEvent;
 					return;
+				}
 			}
 		}
 	}

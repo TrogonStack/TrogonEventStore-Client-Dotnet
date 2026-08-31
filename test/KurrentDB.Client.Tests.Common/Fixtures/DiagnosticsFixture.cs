@@ -126,13 +126,13 @@ public class DiagnosticsFixture : KurrentDBPermanentFixture {
 		string eventId,
 		string? consumerGroupName = null
 	) {
-		activity.DisplayName.ShouldBe($"{TracingConstants.Operations.Process} {stream}");
-		activity.Kind.ShouldBe(ActivityKind.Consumer);
+		activity.DisplayName.ShouldBe($"{SubscriptionTraceSemantics.Operation} {stream}");
+		activity.Kind.ShouldBe(SubscriptionTraceSemantics.SpanKind);
 
 		var expectedTags = new Dictionary<string, string?> {
 			{ TelemetryAttributes.MessagingSystem, TracingConstants.SystemName },
-			{ TelemetryAttributes.MessagingOperationName, TracingConstants.Operations.Process },
-			{ TelemetryAttributes.MessagingOperationType, TracingConstants.Operations.Process },
+			{ TelemetryAttributes.MessagingOperationName, SubscriptionTraceSemantics.Operation },
+			{ TelemetryAttributes.MessagingOperationType, SubscriptionTraceSemantics.Operation },
 			{ TelemetryAttributes.MessagingDestinationName, stream },
 			{ TelemetryAttributes.MessagingMessageId, eventId },
 			{ TrogonTelemetryAttributes.EventType, TestEventType }
