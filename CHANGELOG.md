@@ -4,6 +4,20 @@ Release Please maintains new TrogonEventStore .NET Client entries above the hist
 
 Entries through 23.3.0 describe the upstream client before this derivative began. They are retained for provenance and compatibility context.
 
+## [0.2.0](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/compare/v0.1.0...v0.2.0) (2026-09-02)
+
+
+### Features
+
+* **compatibility:** protect client interoperability ([#8](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/issues/8)) ([c59f1ee](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/commit/c59f1eeeab7fc2e1df5509033726a1095fb30201))
+
+
+### Bug Fixes
+
+* **client:** align verification with the supported runtime ([#6](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/issues/6)) ([2f28076](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/commit/2f280769b052a6f45b6b725c6038c0fb559fd9d4))
+* **client:** align with the server contract ([#4](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/issues/4)) ([3a9d108](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/commit/3a9d108b711312557a1d5fd8b64025e01c16e441))
+* **client:** preserve interoperable trace context ([#7](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/issues/7)) ([da4c62c](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/commit/da4c62cd15eaa7d07f5ff01a62c9e226be802746))
+
 ## [0.1.0](https://github.com/TrogonStack/TrogonEventStore-Client-Dotnet/compare/v0.0.1...v0.1.0) (2026-08-22)
 
 
