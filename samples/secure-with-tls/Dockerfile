@@ -32,7 +32,7 @@ ARG BUILD_CONFIGURATION
 
 WORKDIR /src
 
-COPY Directory.Build.props Directory.Build.targets LICENSE.md README.md ./
+COPY Directory.Build.props Directory.Build.targets LICENSE README.md ./
 COPY src ./src
 COPY samples/Directory.Build.props ./samples/
 COPY samples/${APP_NAME} ./samples/${APP_NAME}

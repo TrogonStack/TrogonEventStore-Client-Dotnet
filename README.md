@@ -2,7 +2,7 @@
 
 The .NET client for TrogonEventStore. The package targets .NET 10.
 
-This project is derived from the Apache 2.0 licensed KurrentDB .NET client. See [LICENSE.md](LICENSE.md) for licensing and attribution. During the initial bootstrap, the public API remains under the `KurrentDB.Client` namespaces while package identity and distribution move to TrogonEventStore.
+This project is derived from the Apache 2.0 licensed KurrentDB .NET client. See [LICENSE](LICENSE) for licensing and attribution. During the initial bootstrap, the public API remains under the `KurrentDB.Client` namespaces while package identity and distribution move to TrogonEventStore.
 
 ## Install from GitHub Packages
 
